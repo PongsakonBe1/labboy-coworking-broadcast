@@ -65,5 +65,3 @@ py -3 check_contrast.py
 `py -3 tests/smoke_webview.py` เปิดหน้าต่าง WebView จริงชั่วคราวเพื่อตรวจ bridge โดยปิดการอ่านรหัสจริง, startup registration และการเริ่ม monitor
 
 ดูผลตรวจและข้อจำกัดใน [REVIEW.md](REVIEW.md) และแนวทางดูแลใน [DEVELOPMENT.md](DEVELOPMENT.md)
-
-

@@ -1,0 +1,35 @@
+# Python runtime and caches
+__pycache__/
+*.py[cod]
+
+# Machine-specific runtime data and logs
+logs/
+room_speaker_state.json
+room_speaker_monitor.lock
+gui_startup_error.log
+*.log
+
+# Local secrets and configuration
+.env
+.env.*
+*.local.json
+
+# Historical backups from manual development
+*.before-*.py
+*.dark-backup.py
+readme.before-*.txt
+readme.txt
+
+# Build outputs
+build/
+dist/
+*.spec
+*.exe
+
+# Windows shortcuts and temporary files
+*.lnk
+*.tmp
+*.bak
+
+# Real room inventory (kept under the Windows user profile)
+room_devices.json

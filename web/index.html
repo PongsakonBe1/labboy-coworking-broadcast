@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ระบบประกาศเสียงห้องติว</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <div class="app-layout">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-icon" aria-hidden="true"><img src="labboy-coworking-broadcast.ico" alt=""></div>
+          <div class="brand-text">
+            <h1>ระบบประกาศเสียงห้องติว</h1>
+            <p>ICIT - K-Room Automation</p>
+          </div>
+        </div>
+
+          <span class="system-pill" id="statusPill">
+            <i class="dot"></i>
+            <span id="statusText">กำลังเตรียมระบบ</span>
+          </span>
+        <div class="topbar-controls">
+          <label class="switch-wrap" title="สลับโหมดใช้งานจริง / โหมดทดลอง">
+            <input id="liveSwitch" type="checkbox">
+            <span class="switch"></span>
+            <span class="switch-label">โหมดใช้งานจริง</span>
+          </label>
+
+
+
+          <button class="button quiet small-btn" id="topPasswordBtn">จัดการรหัสลำโพง</button>
+          <button class="button warning small-btn" id="topActionBtn">หยุดชั่วคราว</button>
+
+          <time class="clock-display" id="clockDisplay"><span id="clockDate">—</span><i></i><strong id="clockTime">—</strong></time>
+        </div>
+      </header>
+    <!-- Sidebar ซ้าย: ลำโพง 4 ห้อง และการนำทาง -->
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="sidebar-heading">
+          <h2>ลำโพงประจำห้อง</h2>
+          <p>สถานะจากการกดทดสอบและการส่งเสียงล่าสุด</p>
+          
+        </div>
+        <div class="room-cards-list" id="roomCardsList">
+          <!-- โหลดรายการห้องอัตโนมัติ -->
+        </div>
+      </div>
+      <div class="sidebar-bottom">
+        <label class="sidebar-option"><input id="sidebarStartup" type="checkbox">เริ่มพร้อม Windows</label>
+        <label class="sidebar-option"><input id="sidebarTray" type="checkbox">ย่อ/ปิดหน้าต่างไว้ที่ถาดระบบ</label>
+        <p class="sidebar-security">● รหัสผ่านเก็บใน Windows Credential Manager · v2.0</p>
+        <button class="nav-toggle-btn" id="viewToggleBtn">
+          <span class="nav-btn-icon" id="viewToggleIcon">⚙</span>
+          <span id="viewToggleText">ตั้งค่า</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- พื้นที่หลักขวา: Topbar + Main View / Settings View -->
+    <main class="main-content">
+      <!-- Topbar ด้านบนขวา -->
+
+
+      <!-- View 1: หน้าหลัก (Dashboard) -->
+      <div class="view-panel" id="mainView">
+        <!-- แถบแจ้งเตือนข้อผิดพลาดสำคัญ (ถ้ามี) -->
+        <div class="alert-banner hidden" id="alertBanner" role="status">
+          <span class="alert-mark">!</span>
+          <span id="alertText"></span>
+          <button class="text-button" id="alertAction"></button>
+          <button class="dismiss" id="dismissAlert" aria-label="ปิดการแจ้งเตือน">×</button>
+        </div>
+
+        <!-- แถบสีฟ้า: เสียงรอบถัดไป + สรุปสถิติ -->
+        <section class="next-banner" id="nextBanner">
+          <div class="next-left">
+            <span class="bell-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg>
+            </span>
+            <div class="next-info">
+              <span class="next-title" id="nextTitle">เสียงรอบถัดไป: ยังไม่มีรายการที่รอหมดเวลา</span>
+            </div>
+            <span class="next-eta-badge" id="nextEtaBadge">—</span>
+          </div>
+
+          <div class="next-metrics">
+            <span class="stat-item">ทำงาน <strong id="runtimeStat">00:00:00</strong></span>
+            <span class="stat-sep">·</span>
+            <span class="stat-item">อ่านตาราง <strong id="readsStat">0 รอบ</strong></span>
+            <span class="stat-sep">·</span>
+            <span class="stat-item">จองวันนี้ <strong id="bookingsStat">0 รายการ</strong></span>
+            <span class="stat-sep">·</span>
+            <span class="stat-item">ประกาศ <strong id="successStat">0 สำเร็จ</strong> · <strong id="failureStat">0 ไม่สำเร็จ</strong></span>
+          </div>
+        </section>
+
+        <!-- แผงเนื้อหาล่าง: ตารางจองวันนี้ + กิจกรรมล่าสุด -->
+        <div class="dashboard-body">
+          <!-- ตารางรายการจองวันนี้ -->
+          <article class="card booking-card">
+            <div class="card-header">
+              <div>
+                <h2>รายการจองวันนี้</h2>
+                <p id="todayDateLabel">—</p>
+              </div>
+              <div class="filter-group">
+                <div class="filter-item">
+                  <label for="roomFilter">ห้อง</label>
+                  <select id="roomFilter">
+                    <option value="all">ทุกห้อง</option>
+                  </select>
+                </div>
+                <div class="filter-item">
+                  <label for="statusFilter">สถานะ</label>
+                  <select id="statusFilter">
+                    <option value="all">ทุกสถานะ</option>
+                    <option value="กำลังใช้ห้อง">กำลังใช้ห้อง</option>
+                    <option value="จองแล้ว">จองแล้ว</option>
+                    <option value="ครบเวลาแล้ว">ครบเวลาแล้ว</option>
+                  </select>
+                </div>
+                <div class="filter-item">
+                  <label for="sortFilter">เรียง</label>
+                  <select id="sortFilter">
+                    <option value="priority">สถานะสำคัญก่อน</option>
+                    <option value="ending">ใกล้หมดเวลาก่อน</option>
+                    <option value="start">เวลาเริ่มก่อน</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-container">
+              <table class="bookings-table">
+                <thead>
+                  <tr>
+                    <th>ห้อง</th>
+                    <th>ช่วงเวลา</th>
+                    <th>สถานะ</th>
+                    <th>การแจ้งเตือน</th>
+                  </tr>
+                </thead>
+                <tbody id="bookingRows">
+                  <tr>
+                    <td colspan="4" class="empty-state">เริ่มระบบเพื่ออ่านตาราง K‑Room</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <!-- กิจกรรมล่าสุด (Timeline) -->
+          <article class="card activity-card">
+            <div class="card-header">
+              <div>
+                <h2>กิจกรรมล่าสุด</h2>
+                <p>สรุปเฉพาะเหตุการณ์สำคัญ</p>
+              </div>
+              <div class="activity-actions">
+                <button class="text-button" id="clearActivityBtn">ล้าง</button>
+                <button class="text-button" id="openLogsBtn">เปิดโฟลเดอร์ Log</button>
+              </div>
+            </div>
+
+            <div class="timeline-container" id="timelineList">
+              <div class="empty-state">ยังไม่มีกิจกรรม</div>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <!-- View 2: หน้าตั้งค่า (Settings View - ตรงตาม Image 1) -->
+      <div class="view-panel hidden" id="settingsView">
+        <div class="settings-page">
+          <div class="settings-page-header">
+            <h2>ตั้งค่า</h2>
+          </div>
+
+          <!-- กล่องที่ 1: รหัสลำโพง -->
+          <section class="card settings-card">
+            <div class="settings-card-row">
+              <div class="settings-card-info">
+                <h3>รหัสลำโพง</h3>
+                <p id="passwordStatusDesc">บันทึกใน Windows แล้ว</p>
+              </div>
+              <button class="button quiet" id="settingsManagePasswordBtn">จัดการรหัสลำโพง</button>
+            </div>
+          </section>
+
+          <!-- กล่องที่ 2: การเริ่มต้นและหน้าต่าง -->
+          <section class="card settings-card">
+            <div class="settings-card-info">
+              <h3>การเริ่มต้นและหน้าต่าง</h3>
+              <div class="settings-checkboxes">
+                <label class="check-item">
+                  <input id="startupCheckbox" type="checkbox">
+                  <span>เริ่มพร้อม Windows</span>
+                </label>
+                <label class="check-item">
+                  <input id="trayCheckbox" type="checkbox">
+                  <span>ย่อ/ปิดหน้าต่างไว้ที่ถาดระบบ</span>
+                </label>
+              </div>
+            </div>
+          </section>
+
+          <!-- กล่องที่ 3: แหล่งตารางและอุปกรณ์ห้อง -->
+          <section class="card settings-card">
+            <div class="settings-card-info">
+              <h3>แหล่งตารางและอุปกรณ์ห้อง</h3>
+              <p>URL ตารางจอง K‑Room และข้อมูล IP/Audio ID ประจำห้อง</p>
+              <div class="settings-field-group">
+                <label for="settingsScheduleUrl">URL ตารางจอง</label>
+                <input id="settingsScheduleUrl" type="url" class="full-input">
+              </div>
+              <div class="room-edit-header">
+                <h4>รายการอุปกรณ์ห้อง</h4>
+                <button type="button" class="button quiet small-btn" id="addRoomBtn">+ เพิ่มห้อง</button>
+              </div>
+              <div class="room-edit-list" id="roomEditList"></div>
+              <div class="settings-action-bar">
+                <button class="button primary" id="saveRoomConfigBtn">บันทึกการตั้งค่า</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- กล่องที่ 4: ความปลอดภัยและเวอร์ชัน -->
+          <section class="card settings-card">
+            <div class="settings-card-info">
+              <h3>ความปลอดภัยและเวอร์ชัน</h3>
+              <div class="security-meta">
+                <p class="meta-dot">● รหัสผ่านเก็บใน Windows Credential Manager</p>
+                <p class="meta-sub">ตรวจตาราง K-Room และแจ้งเตือนผ่านลำโพงเมื่อหมดเวลาจอง</p>
+                <p class="meta-version">labBoy Coworking · v2.0</p>
+              </div>
+            </div>
+          </section>
+
+          <!-- กล่องที่ 5: การแสดงผล -->
+          <section class="card settings-card">
+            <div class="settings-card-row">
+              <div class="settings-card-info">
+                <h3>การแสดงผล</h3>
+                <p>เลือกธีมที่อ่านได้ชัดเจนสำหรับสภาพแสงของเคาน์เตอร์</p>
+              </div>
+              <div class="theme-select-wrap">
+                <select id="appearanceSelect" class="theme-select">
+                  <option value="light" selected>สว่าง</option>
+                  <option value="dark">มืด</option><option value="high_contrast">คอนทราสต์สูง</option>
+                </select>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Dialog ยืนยันการทำงานทั่วไป -->
+  <dialog id="confirmDialog" class="modal-dialog">
+    <form method="dialog">
+      <div class="dialog-icon warning-icon" id="confirmIcon">!</div>
+      <h2 id="confirmTitle">ยืนยันการทำงาน</h2>
+      <p id="confirmMessage"></p>
+      <div class="dialog-actions">
+        <button class="button quiet" value="cancel">ยกเลิก</button>
+        <button class="button primary" id="confirmButton" value="confirm">ยืนยัน</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog จัดการรหัสลำโพง -->
+  <dialog id="passwordDialog" class="modal-dialog">
+    <form id="passwordForm">
+      <div class="dialog-icon">⌑</div>
+      <h2>รหัสผ่านลำโพง</h2>
+      <p>บันทึกไว้ใน Windows Credential Manager ของบัญชีนี้อย่างปลอดภัย</p>
+      <label for="passwordInput">รหัสผ่านผู้ดูแลลำโพง (Admin)</label>
+      <div class="password-field">
+        <input id="passwordInput" type="password" autocomplete="new-password" required placeholder="กรอกรหัสผ่าน">
+        <button type="button" class="text-button" id="showPasswordToggle">แสดง</button>
+      </div>
+      <div class="dialog-actions">
+        <button type="button" class="button quiet" data-close="passwordDialog">ยกเลิก</button>
+        <button type="submit" class="button primary">บันทึกและเริ่มระบบ</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog รายละเอียดห้อง -->
+  <dialog id="roomDetailDialog" class="modal-dialog">
+    <form method="dialog">
+      <div class="dialog-icon" id="roomDetailIcon">🔊</div>
+      <h2 id="roomDetailTitle">รายละเอียดห้อง</h2>
+      <div id="roomDetailContent" class="room-detail-body"></div>
+      <div class="dialog-actions">
+        <button class="button primary" value="ok">ปิด</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Dialog แจ้งเตือนข้อความทั่วไป -->
+  <dialog id="noticeDialog" class="modal-dialog">
+    <form method="dialog">
+      <div class="dialog-icon" id="noticeIcon">i</div>
+      <h2 id="noticeTitle">แจ้งให้ทราบ</h2>
+      <p id="noticeMessage"></p>
+      <div class="dialog-actions">
+        <button class="button primary" value="ok">ตกลง</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status"></div>
+
+  <script src="booking_model.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

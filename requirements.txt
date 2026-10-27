@@ -1,0 +1,7 @@
+requests==2.34.2
+beautifulsoup4==4.15.0
+playwright==1.64.1
+customtkinter==6.0.0
+pillow==13.0.0
+pystray==0.19.5
+pywebview==6.2.1
