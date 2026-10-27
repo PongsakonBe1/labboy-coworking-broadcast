@@ -99,8 +99,13 @@ window.showCloseConfirm = async () => {
 };
 
 function setStatus(text, kind = 'blue') {
-  $('statusText').textContent = text;
+  setText('statusText', text);
   $('statusPill').className = `system-pill ${kind}`;
+}
+
+function setText(id, value) {
+  const element = $(id), text = String(value ?? '');
+  if (element && element.textContent !== text) element.textContent = text;
 }
 
 function reuseRows(container, items, tagName) {
@@ -139,37 +144,37 @@ function renderRooms(cards) {
   const container = $('roomCardsList');
   if (!container) return;
 
-  container.innerHTML = cards.map((room) => {
-    const statusClass = BookingModel.roomStatusKind(room);
-
+  reuseRows(container, cards.map((room, index) => {
+    const statusId = `room-status-${encodeURIComponent(room.name)}`;
     const tintBg = room.tint || '#EAF3FF';
     const tintColor = room.tint_text || '#0055B8';
 
-    return `
-      <article class="room-card">
+    return {key:room.name, className:'room-card', html:`
         <div class="room-card-top">
           <span class="room-card-icon" style="background:${esc(tintBg)}; color:${esc(tintColor)};">
             <svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4Z"/><path d="M16 9a5 5 0 0 1 0 6"/></svg>
           </span>
           <h3 class="room-card-title">${esc(room.name)}</h3>
-          <span class="room-card-badge">ROOM ${esc(room.number)}</span>
+          <button class="room-card-badge" data-detail="${esc(room.name)}" aria-label="รายละเอียดลำโพงห้อง ${esc(room.name)}">ROOM ${esc(room.number)}</button>
         </div>
         <div class="room-card-meta">
           <span class="room-ip-text">${esc(room.ip || 'ยังไม่ตั้งค่า IP')}</span>
-          <span class="room-status-pill ${statusClass}">
-            ● ${esc(room.status)}
-          </span>
+          <span class="room-status-pill" id="${statusId}" aria-live="polite" aria-atomic="true"></span>
         </div>
         <div class="room-card-actions">
-          <button class="test-speaker-btn" data-room="${esc(room.name)}" title="ทดสอบส่งเสียงไปยังลำโพง 1 ครั้ง">
+          <button class="test-speaker-btn" data-room="${esc(room.name)}" aria-describedby="${statusId}" title="ทดสอบเสียงห้อง ${esc(room.name)} 1 ครั้ง ${index < 4 ? `(Alt+${index+1})` : ''}">
             <svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4Z"/><path d="M16 9a5 5 0 0 1 0 6"/></svg>
             ทดสอบเสียง 1 ครั้ง
           </button>
-          <button class="detail-btn" data-detail="${esc(room.name)}">รายละเอียด</button>
         </div>
-      </article>
-    `;
-  }).join('');
+    `};
+  }), 'article');
+  cards.forEach((room) => {
+    const status = $(`room-status-${encodeURIComponent(room.name)}`);
+    setText(status.id, `● ${room.status}`);
+    status.className = `room-status-pill ${BookingModel.roomStatusKind(room)}`;
+    status.title = room.status;
+  });
 
   container.querySelectorAll('[data-room]').forEach((btn) => {
     btn.onclick = () => testRoom(btn.dataset.room);
@@ -181,11 +186,13 @@ function renderRooms(cards) {
 
   // อัปเดตตัวเลือกใน Filter dropdown
   const filterSelect = $('roomFilter');
-  if (filterSelect) {
+  const optionsSignature = JSON.stringify(cards.map(room => room.name));
+  if (filterSelect && filterSelect._optionsSignature !== optionsSignature) {
     const prev = filterSelect.value;
     filterSelect.innerHTML = '<option value="all">ทุกห้อง</option>' +
       cards.map((r) => `<option value="${esc(r.name)}">${esc(r.name)}</option>`).join('');
     filterSelect.value = cards.some((r) => r.name === prev) ? prev : 'all';
+    filterSelect._optionsSignature = optionsSignature;
   }
 }
 
@@ -303,7 +310,7 @@ function setAlert(state) {
   if (!message) dismissedAlert = '';
   banner.classList.toggle('hidden', !message || message === dismissedAlert);
   banner.classList.toggle('amber', !state.auth_error);
-  $('alertText').textContent = message;
+  setText('alertText', message);
   $('alertAction').textContent = state.auth_error ? 'แก้รหัสลำโพง' : (message ? 'เปิดบันทึก Log' : '');
   $('alertAction').onclick = () => (state.auth_error ? openPassword() : call('open_logs'));
 }
@@ -351,12 +358,7 @@ function update(state) {
     $('nextEtaBadge').textContent = state.last_read === 'ยังไม่อ่าน' ? 'รออ่านตาราง' : `อ่านล่าสุด ${state.last_read}`;
   }
 
-  $('runtimeStat').textContent = state.metrics.runtime;
-  $('readsStat').textContent = `${state.metrics.reads} รอบ`;
-  $('bookingsStat').textContent = `${state.metrics.bookings} รายการ`;
-  $('successStat').textContent = `${state.metrics.successes} สำเร็จ`;
-  $('failureStat').textContent = `${state.metrics.failures} ไม่สำเร็จ`;
-  $('failureStat').classList.toggle('failure-count', state.metrics.failures > 0);
+  if (isSettingsView) updateMetrics(state);
 
   // เรนเดอร์การ์ดห้อง, ตาราง และกิจกรรม
   renderRooms(state.room_cards);
@@ -366,6 +368,15 @@ function update(state) {
 
   // เติมข้อมูลหน้าตั้งค่า
   if (!settingsDirty) fillSettings(state.settings);
+}
+
+function updateMetrics(state) {
+  setText('runtimeStat', state.metrics.runtime);
+  setText('readsStat', `${state.metrics.reads} รอบ`);
+  setText('bookingsStat', `${state.metrics.bookings} รายการ`);
+  setText('successStat', `${state.metrics.successes} สำเร็จ`);
+  setText('failureStat', `${state.metrics.failures} ไม่สำเร็จ`);
+  $('failureStat').classList.toggle('failure-count', state.metrics.failures > 0);
 }
 
 function fillSettings(settings) {
@@ -443,6 +454,7 @@ function toggleView() {
   const btnText = $('viewToggleText');
   const btnIcon = $('viewToggleIcon');
   if (isSettingsView) {
+    if (current) updateMetrics(current);
     btnText.textContent = 'กลับหน้าหลัก';
     btnIcon.textContent = '←';
   } else {
@@ -654,6 +666,21 @@ function bindEvents() {
   };
 
   $('passwordForm').onsubmit = savePasswordSubmit;
+
+  $('topActionBtn').title = 'หยุดชั่วคราว / ทำงานต่อ (Ctrl+Shift+P)';
+  $('viewToggleBtn').title = 'ตั้งค่า / กลับหน้าหลัก (Ctrl+,)';
+  document.addEventListener('keydown', (event) => {
+    if (event.isComposing || event.repeat || document.querySelector('dialog[open]') ||
+        event.target.matches('input,textarea,select,[contenteditable="true"]')) return;
+    if (event.ctrlKey && event.shiftKey && event.code === 'KeyP') {
+      event.preventDefault(); handleActionClick();
+    } else if (event.ctrlKey && event.code === 'Comma') {
+      event.preventDefault(); toggleView();
+    } else if (event.altKey && /^[1-4]$/.test(event.key)) {
+      const room = current?.room_cards[Number(event.key)-1];
+      if (room) { event.preventDefault(); testRoom(room.name); }
+    }
+  });
 
   document.querySelectorAll('[data-close]').forEach((btn) => {
     btn.onclick = () => $(btn.dataset.close).close();

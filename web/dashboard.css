@@ -183,3 +183,68 @@ body { min-width:0; color:var(--text-main); background:var(--bg-window); }
   .room-card-meta { flex-direction:column; height:auto; align-items:flex-start; margin:4px 0; }
   .dashboard-body { overflow:auto; }
 }
+
+/* อ่านง่ายสำหรับเจ้าหน้าที่: ข้อความรอง >=14px และคอนโทรล >=36px. */
+body { font-size:15px; }
+.brand-text p, .sidebar-heading p, .room-card-badge, .room-status-pill,
+.room-ip-text, .room-cell-sub, .bookings-table th, .badge, .timeline-subtitle,
+.timeline-time, .card-header p, .system-pill, .next-eta-badge,
+.stat-item, .settings-card p, .settings-card label, .settings-field-group label,
+.security-meta p, .settings-page .meta-version, .modal-dialog p,
+.modal-dialog label, .modal-dialog .room-detail-row, .empty-state, .toast { font-size:14px; }
+.switch-label, .button, .small-btn, .text-button, .test-speaker-btn,
+.nav-toggle-btn, .filter-item select, .theme-select, .room-edit-row input,
+.settings-field-group input, .bookings-table td, .booking-time-cell { font-size:15px; }
+.clock-display, .room-edit-header h4 { font-size:15px; }
+.button, .small-btn, .text-button, .test-speaker-btn, .nav-toggle-btn,
+.filter-item select, .theme-select, .room-card-badge, .room-del-btn,
+.dismiss { min-height:36px; min-width:36px; }
+.switch-wrap, .check-item { min-height:36px; }
+button:focus-visible, input:focus-visible, select:focus-visible {
+  outline:3px solid var(--color-blue); outline-offset:3px;
+}
+.password-field:focus-within { outline:3px solid var(--color-blue); outline-offset:3px; }
+.room-detail-body { background:var(--bg-inner); }
+.sidebar { overflow:hidden; }
+.sidebar-top { min-height:0; flex:1; overflow:auto; }
+.sidebar-bottom { flex-shrink:0; margin-top:8px; padding-top:8px; }
+.sidebar-option, .sidebar-security { display:none; }
+.nav-toggle-btn { height:36px; }
+.room-card { padding:8px 10px; }
+.room-card-badge { border:1px solid var(--control-border); line-height:1.2; cursor:pointer; }
+.room-card-meta { min-height:24px; height:auto; margin:3px 0; }
+.room-card-meta .room-ip-text { display:none; }
+.room-status-pill { max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.room-cell-sub { line-height:1.1; }
+.bookings-table th { height:36px; }
+.bookings-table td { min-height:42px; height:46px; }
+.booking-time-cell { font-family:Consolas,monospace; }
+.booking-card .card-header { min-height:72px; }
+.dashboard-body { grid-template-rows:minmax(370px,1.75fr) minmax(160px,1fr); }
+.timeline-title { font-size:15px; }
+.timeline-time { font-size:14px; }
+.next-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:12px; }
+.stat-item { white-space:normal; padding:10px; border:1px solid var(--border-subtle); }
+@media (max-width:1190px) {
+  .app-layout { grid-template-rows:108px minmax(0,1fr); }
+  .topbar { height:108px; flex-wrap:wrap; padding:8px 14px; gap:4px 12px; }
+  .topbar-controls { margin-left:auto; }
+  .system-pill { font-size:14px; }
+}
+@media (max-height:760px) {
+  .room-card { padding:6px 8px; }
+  .bookings-table td { height:42px; }
+  .nav-toggle-btn { height:36px; }
+}
+@media (max-width:1000px) {
+  .booking-card .card-header { flex-wrap:wrap; }
+  .filter-group { margin-left:auto; }
+  .dashboard-body { overflow:auto; }
+  .brand-text h1 { font-size:19px; }
+  .clock-display span, .clock-display i { display:none; }
+  .bookings-table { min-width:620px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
+  button:active { transform:none; }
+}

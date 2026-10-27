@@ -20,6 +20,10 @@
 | ปิดแอประหว่างทดสอบแล้วอาจกลับมาเริ่ม monitor | ยกเลิกคิว/การเริ่มต่อเมื่อปิดหรือสั่งหยุด | `_shutdown`, `_read_test_output` |
 | helper อ่านรหัสอยู่ใน object ที่ส่งให้ JavaScript | bridge เปิดเฉพาะคำสั่งที่ UI ใช้ ไม่มีตัวอ่านรหัส | `DesktopAPI` |
 | แถบ alert ว่างกินพื้นที่และตารางแถวที่ 6 ถูกตัด | ซ่อน alert ที่ไม่มีข้อความและคำนวณพื้นที่แนวตั้งใหม่ | `web/dashboard.css` |
+| หัวหน้าจอบอกทดสอบสำเร็จ แต่ sidebar ยังไม่มีผล | ผูกผลจบ process กับห้องที่เลือก รวม success/failure/cancel และเวลา ใช้ผลเดียวกับหัวหน้าจอ | `_launch_test_process`, `_run_test_input`, `_read_test_output` |
+| สถานะเปลี่ยนแล้วสร้างเนื้อหาปุ่มใหม่ ทำให้โฟกัสหาย | อัปเดตเฉพาะข้อความสถานะใน DOM เดิมและคงตัวเลือก filter เดิม | `renderRooms`, `setText` |
+| ข้อความรอง 10–13px / ปุ่มบางจุดสูง 30px | ข้อความรองอย่างน้อย 14px คอนโทรลอย่างน้อย 36px ย้ายสถิติรอบนี้ไปตั้งค่า | `web/dashboard.css`, `updateMetrics`, `web/index.html` |
+| ขาด keyboard shortcut และชื่อ dialog สำหรับ accessibility | เพิ่ม focus ring, ชื่อ dialog, aria-live ที่อัปเดตเมื่อค่าเปลี่ยน, shortcut พร้อม confirmation และ reduced motion | `web/app.js`, `web/index.html`, `web/dashboard.css` |
 
 ## ดีไซน์
 
@@ -31,12 +35,16 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 
 ## ผลทดสอบ
 
-- Python unittest 29 กรณี: ผ่าน (รวม updater 5 กรณี)
+- Python unittest 37 กรณี: ผ่าน (รวม updater 5 กรณี)
 - JavaScript status/filter/priority/outcome suite: ผ่าน
 - `check_contrast.py`: ผ่านคู่สี legacy และ Web UI ครบ light/dark/high_contrast
-- ตรวจสีข้อความที่ render จริงในหน้าตั้งค่าทั้ง 3 ธีม: ผ่าน
+- ตรวจสีข้อความที่ render จริงใน dashboard, ตั้งค่า, dialog รายละเอียดห้องและรหัสผ่านทั้ง 3 ธีม: ผ่าน
 - Layout ที่ 1280×940, 1326×678 (พื้นที่หน้าต่างบนจอ 1366×768), 1100×650: ตารางเห็นอย่างน้อย 6 แถว ไม่มี horizontal overflow ของ document
 - ตรวจ DOM reuse, confirmation ทดสอบเสียง, draft ตั้งค่า: ผ่าน
+- ตรวจผลทดสอบ sidebar สำเร็จ/ล้มเหลว/ไม่ได้ส่ง PLAY, โฟกัสปุ่มเมื่อสถานะเปลี่ยน และคีย์ลัดไม่ข้าม confirmation: ผ่าน
+- จอจำลอง 1366×768 ที่ 125/150%: ไม่มี horizontal overflow ของ document ปุ่มทดสอบและบันทึกตั้งค่าเข้าถึงได้ด้วย scroll ภายใน; หกแถวพร้อมกันรับรองเฉพาะพื้นที่ 1280×940, 1326×678 และ 1100×650 ข้างต้น
+- reduced motion ตาม system preference และขนาดข้อความรอง/คอนโทรลที่มองเห็น: ผ่าน
+- ตรวจ Run registry แบบอ่านอย่างเดียว: ชี้มายัง EXE ของ installation ปัจจุบันและไฟล์มีอยู่จริง; ยังไม่ได้ทดสอบ sign-in Windows รอบใหม่
 - WebView2 จริงและ JavaScript/Python bridge: ผ่าน โดย mock รหัส, startup และ monitor
 - สร้าง EXE ของ GUI และ monitor ด้วย PyInstaller: ผ่านทั้งสองไฟล์ใน `build/release`; ไม่เขียนทับ executable เดิมที่กำลังรัน และยังไม่ได้สั่งใช้งาน EXE ชุดใหม่กับลำโพงจริง
 - ตัวอัปเดตถามยืนยันก่อนหยุด process ของ installation นี้ รองรับ monitor ที่ค้างโดยไม่มี GUI, สำรอง EXE, ตรวจ hash, คืนไฟล์เดิมเมื่อคัดลอกล้มเหลว และไม่เปลี่ยน state; ทดสอบด้วยไฟล์/process จำลอง ไม่หยุด process จริงระหว่างทดสอบ
@@ -55,4 +63,4 @@ py -3 tests/smoke_webview.py
 
 ภาพจากการทดสอบอยู่ใน `build/ui-review/` (ไม่ commit); ภาพตัวอย่างสาธารณะใน `docs/ui-preview.png` ใช้ข้อมูลจำลองและ IP เอกสาร `192.0.2.x`
 
-ข้อจำกัด: การทดสอบจำลองยืนยันการแสดงผลและการเรียก process ได้ แต่ไม่ได้ยืนยันเสียงจริง, การล็อกอิน Windows รอบใหม่, หรือเครือข่าย/โครงสร้าง K‑Room ในอนาคต ต้องตรวจตามสภาพแวดล้อมเมื่อเปลี่ยนอุปกรณ์หรือเว็บ
+ข้อจำกัด: ยังไม่ได้ทดสอบกับ NVDA/Narrator จริง หรือ sign-in Windows รอบใหม่ การจำลองยืนยันการแสดงผลและการเรียก process ได้ แต่ไม่ได้ยืนยันเสียงทางกายภาพ หรือเครือข่าย/โครงสร้าง K‑Room ในอนาคต ต้องตรวจตามสภาพแวดล้อมเมื่อเปลี่ยนอุปกรณ์หรือเว็บ ผลนี้ไม่ใช่การรับรอง Apple HIG หรือ WCAG ทุกข้อ

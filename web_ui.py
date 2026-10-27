@@ -697,29 +697,38 @@ class BroadcastController:
             )
             self.is_monitor_session = False
             self.resume_after_test = resume
+            self.intentional_stop = False
+            self.room_results[room] = {"status": "กำลังทดสอบเสียง…", "kind": "amber"}
             self.status = f"กำลังทดสอบเสียง · {room}"
             self.status_kind = "amber"
             self._append_activity("เริ่มทดสอบเสียง", title="เริ่มทดสอบเสียง", subtitle=f"{room} · ROOM {device.get('number', '—')}", kind="blue")
-            threading.Thread(target=self._run_test_input, args=(self.process,), daemon=True).start()
-            self.reader_thread = threading.Thread(target=self._read_test_output, args=(self.process, resume), daemon=True)
+            confirmed = self._run_test_input(self.process)
+            self.reader_thread = threading.Thread(
+                target=self._read_test_output,
+                args=(self.process, resume, room, confirmed), daemon=True,
+            )
             self.reader_thread.start()
         except Exception as exc:
+            self.room_results[room] = {"status": "เริ่มทดสอบไม่ได้", "kind": "red"}
             self.status = f"เริ่มทดสอบไม่ได้: {exc}"
             self.status_kind = "red"
             if resume:
                 self.start_monitor(automatic=True)
 
     @staticmethod
-    def _run_test_input(process: subprocess.Popen[str]) -> None:
+    def _run_test_input(process: subprocess.Popen[str]) -> bool:
         try:
             if process.stdin:
                 process.stdin.write("PLAY\n")
                 process.stdin.flush()
                 process.stdin.close()
+                return True
         except (BrokenPipeError, OSError):
             pass
+        return False
 
-    def _read_test_output(self, process: subprocess.Popen[str], resume: bool) -> None:
+    def _read_test_output(self, process: subprocess.Popen[str], resume: bool,
+                          room: str | None = None, confirmed: bool = True) -> None:
         if process.stdout:
             for raw in process.stdout:
                 line = raw.rstrip("\r\n")
@@ -728,11 +737,25 @@ class BroadcastController:
                         self._handle_log(line)
         code = process.wait()
         with self.lock:
-            if self.process is process:
-                self.process = None
+            owns_process = self.process is process
+            cancelled = not confirmed or (owns_process and self.intentional_stop)
+            kind = "amber" if cancelled else ("green" if code == 0 else "red")
+            result = "ยกเลิกการทดสอบ" if cancelled else ("ทดสอบเสียงสำเร็จ" if code == 0 else "ทดสอบเสียงไม่สำเร็จ")
+            if room in self.rooms:
+                # ผูกผลกับห้องที่เลือกตั้งแต่เริ่ม process ไม่พึ่งการจับข้อความ log.
+                # ส่วนหัวและ sidebar ใช้ผลเดียวกัน รวมถึงกรณี stdout ไม่มีบรรทัดสำเร็จ.
+                self.room_results[room] = {
+                    "status": f"{result} · {datetime.now():%H:%M:%S}", "kind": kind,
+                }
+                self._append_activity("", title=result,
+                                      subtitle=f"{room} · ROOM {self.rooms[room].get('number', '—')}", kind=kind)
+            if not owns_process:
+                return
+            self.process = None
             self.is_monitor_session = False
-            self.status = "ทดสอบเสียงสำเร็จ" if code == 0 else "ทดสอบเสียงไม่สำเร็จ"
-            self.status_kind = "green" if code == 0 else "red"
+            self.intentional_stop = False
+            self.status = result
+            self.status_kind = kind
         if resume and self.resume_after_test and not self.shutting_down:
             self.resume_after_test = False
             time.sleep(0.2)

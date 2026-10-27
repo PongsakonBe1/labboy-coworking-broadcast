@@ -49,6 +49,33 @@ class ControllerTests(unittest.TestCase):
         self.assertNotEqual(self.c.records[key]["alert"], "ส่งเสียงแล้ว")
         self.assertEqual(self.c.successes, 0)
 
+    def test_successful_test_updates_sidebar_without_a_parseable_log(self):
+        process = Mock(stdout=io.StringIO(''), wait=Mock(return_value=0))
+        self.c.process = process
+        self.c.is_monitor_session = False
+        self.c._read_test_output(process, resume=False, room='Linux', confirmed=True)
+        result = next(room for room in self.c.get_state()['room_cards'] if room['name'] == 'Linux')
+        self.assertEqual(result['status_kind'], 'green')
+        self.assertIn('ทดสอบเสียงสำเร็จ', result['status'])
+        self.assertEqual(self.c.status_kind, result['status_kind'])
+        self.assertEqual(self.c.room_results['Windows']['status'], 'ยังไม่มีผลทดสอบ')
+
+    def test_failed_test_updates_sidebar_without_a_parseable_log(self):
+        process = Mock(stdout=io.StringIO(''), wait=Mock(return_value=1))
+        self.c.process = process
+        self.c.is_monitor_session = False
+        self.c._read_test_output(process, resume=False, room='Windows', confirmed=True)
+        self.assertEqual(self.c.room_results['Windows']['kind'], 'red')
+        self.assertIn('ไม่สำเร็จ', self.c.room_results['Windows']['status'])
+
+    def test_zero_exit_without_play_confirmation_is_not_success(self):
+        process = Mock(stdout=io.StringIO(''), wait=Mock(return_value=0))
+        self.c.process = process
+        self.c.is_monitor_session = False
+        self.c._read_test_output(process, resume=False, room='Linux', confirmed=False)
+        self.assertNotEqual(self.c.room_results['Linux']['kind'], 'green')
+        self.assertNotEqual(self.c.status_kind, 'green')
+
     def test_new_snapshot_removes_cancelled_bookings(self):
         self.summary("Linux=2")
         old = self.booking()

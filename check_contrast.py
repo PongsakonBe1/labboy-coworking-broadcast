@@ -15,6 +15,8 @@ WEB_WCAG_TEXT_PAIRS = [
     ("main on active row", "text-main", "color-green-soft", 4.5),
     ("secondary on card", "text-sub", "bg-surface", 4.5),
     ("secondary on sidebar", "text-sub", "bg-sidebar", 4.5),
+    ("main on room details", "text-main", "bg-inner", 4.5),
+    ("secondary on room details", "text-muted", "bg-inner", 4.5),
     ("muted on card", "text-muted", "bg-surface", 4.5),
     ("muted on sidebar", "text-muted", "bg-sidebar", 4.5),
     ("muted on table header", "text-muted", "bg-inner", 4.5),
@@ -34,6 +36,9 @@ WEB_WCAG_EDGE_PAIRS = [
     ("switch active track", "action-green", "bg-surface", 3.0),
     ("warning control border", "color-amber-border", "color-amber-soft", 3.0),
     ("scrollbar thumb", "scrollbar", "bg-inner", 3.0),
+    ("focus ring on surface", "color-blue", "bg-surface", 3.0),
+    ("focus ring on sidebar", "color-blue", "bg-sidebar", 3.0),
+    ("focus ring on pale button", "color-blue", "color-blue-soft", 3.0),
 ]
 
 
