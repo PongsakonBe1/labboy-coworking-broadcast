@@ -38,7 +38,9 @@ Playwright ใช้ Microsoft Edge ที่ติดตั้งใน Windows
 
 `สร้างโปรแกรม EXE.bat` ใช้ PyInstaller สร้าง GUI และ monitor แยกเป็นสอง executable ลง `build/release` เพื่อให้ยังคงการทำงาน child-process และ log protocol เดิม ต้องเก็บไฟล์ทั้งคู่ไว้ข้างกันในโฟลเดอร์ที่เขียน log/state ได้ ตัว launcher เลือก GUI EXE เมื่อไฟล์ครบ; ถ้าไม่มีจะใช้ Python script ตามเดิม
 
-ปิดแอปเดิมแล้วใช้ `อัปเดตโปรแกรม.bat` เพื่อติดตั้งไฟล์จาก `build/release` ข้าง launcher โดยคงโฟลเดอร์ runtime เดิม การสร้างทับ executable ที่กำลังรันจะถูก Windows ปฏิเสธ จึงแยกขั้น build ออกจากการติดตั้ง
+ใช้ `อัปเดตโปรแกรม.bat` ซึ่งเรียก `update_app.ps1` (UTF-8 BOM สำหรับ Windows PowerShell) เพื่อติดตั้งไฟล์จาก `build/release` ข้าง launcher หลังผู้ใช้ยืนยันจึงหยุด process ที่ตรวจ executable/script path ว่าเป็น installation นี้เท่านั้น สำรองไฟล์ใน `build/update-backups`, ตรวจ SHA256 หลังคัดลอก และคืนไฟล์เดิมเมื่อคัดลอกล้มเหลว จากนั้นเปิดแอปใหม่โดยคงโฟลเดอร์ runtime เดิม
+
+`update_app.ps1 -CheckOnly` ตรวจ process/release แบบอ่านอย่างเดียว; `tests/test_updater.py` ใช้ไฟล์ executable จำลองและไม่หยุด process จริง
 
 หน้าต่างปัจจุบันใช้ pywebview และ Microsoft Edge WebView2 Runtime; ตรวจ lifecycle ของ monitor และ dialog ผ่าน `web_ui.py` และการ render ผ่าน `web/`. อย่าเปิดแอประหว่างแก้/ตรวจ static code หากอาจมีรายการครบเวลาและส่งเสียงจริง
 

@@ -31,7 +31,7 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 
 ## ผลทดสอบ
 
-- Python unittest 24 กรณี: ผ่าน
+- Python unittest 29 กรณี: ผ่าน (รวม updater 5 กรณี)
 - JavaScript status/filter/priority/outcome suite: ผ่าน
 - `check_contrast.py`: ผ่านคู่สี legacy และ Web UI ครบ light/dark/high_contrast
 - ตรวจสีข้อความที่ render จริงในหน้าตั้งค่าทั้ง 3 ธีม: ผ่าน
@@ -39,6 +39,7 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 - ตรวจ DOM reuse, confirmation ทดสอบเสียง, draft ตั้งค่า: ผ่าน
 - WebView2 จริงและ JavaScript/Python bridge: ผ่าน โดย mock รหัส, startup และ monitor
 - สร้าง EXE ของ GUI และ monitor ด้วย PyInstaller: ผ่านทั้งสองไฟล์ใน `build/release`; ไม่เขียนทับ executable เดิมที่กำลังรัน และยังไม่ได้สั่งใช้งาน EXE ชุดใหม่กับลำโพงจริง
+- ตัวอัปเดตถามยืนยันก่อนหยุด process ของ installation นี้ รองรับ monitor ที่ค้างโดยไม่มี GUI, สำรอง EXE, ตรวจ hash, คืนไฟล์เดิมเมื่อคัดลอกล้มเหลว และไม่เปลี่ยน state; ทดสอบด้วยไฟล์/process จำลอง ไม่หยุด process จริงระหว่างทดสอบ
 - monitor contract: รายการที่เคยใช้งานแล้วครบเวลาประกาศได้, รายการไม่เข้าใช้/ถูกระงับ/ไม่รู้จักสถานะ/เลยช่วงเผื่อ/อนาคต/โหมดทดลองไม่ประกาศ, รายการส่งแล้วไม่ส่งซ้ำ
 
 รอบนี้ไม่ได้แก้ `room_speaker_monitor.py` และไม่ได้ทดสอบเสียงทางกายภาพซ้ำ
