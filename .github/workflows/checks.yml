@@ -19,6 +19,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Frontend status and sorting
         run: node tests/test_booking_model.js
+      - name: Native WebView2 shutdown with isolated process trees
+        run: python tests/smoke_shutdown.py --without-system-tray
       - name: WCAG tokens in every theme
         run: python check_contrast.py
       - name: Build monitor with explicit UTF-8 runtime hook

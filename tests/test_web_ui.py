@@ -94,6 +94,26 @@ class WebUITests(unittest.TestCase):
         self.assertEqual(self.page.locator('#settingsScheduleUrl').input_value(), 'https://example.org/new-calendar')
         self.assertFalse(self.errors)
 
+    def test_close_confirmation_is_not_duplicated_and_cancel_is_reported(self):
+        self.page.evaluate('() => { window.showCloseConfirm(); window.showCloseConfirm(); }')
+        self.assertTrue(self.page.get_by_role('dialog', name='หยุดและปิดโปรแกรมหรือไม่').is_visible())
+        self.page.locator('#confirmDialog button[value="cancel"]').click()
+        self.page.wait_for_function("apiCalls.some(item=>item[0]==='cancel_exit')")
+        self.assertNotIn('confirm_exit', self.page.evaluate('apiCalls.map(item=>item[0])'))
+        self.page.evaluate('() => { window.showCloseConfirm(); }')
+        self.page.locator('#confirmButton').click()
+        self.page.wait_for_function("apiCalls.some(item=>item[0]==='confirm_exit')")
+        self.assertEqual(self.page.evaluate("apiCalls.filter(item=>item[0]==='confirm_exit').length"), 1)
+
+    def test_closing_disables_new_work_and_retry_restores_controls(self):
+        self.page.evaluate("() => { current.closing=true; current.status='กำลังหยุดและปิดโปรแกรม'; update(current); }")
+        self.assertTrue(self.page.locator('#topActionBtn').is_disabled())
+        self.assertTrue(self.page.locator('#topPasswordBtn').is_disabled())
+        self.assertTrue(self.page.locator('.test-speaker-btn').first.is_disabled())
+        self.page.evaluate('() => { current.closing=false; update(current); }')
+        self.assertTrue(self.page.locator('#topActionBtn').is_enabled())
+        self.assertTrue(self.page.locator('.test-speaker-btn').first.is_enabled())
+
     def test_completed_test_refreshes_only_the_target_room_status(self):
         button = self.page.locator('.test-speaker-btn').last.element_handle()
         button.evaluate('(node) => node.focus()')

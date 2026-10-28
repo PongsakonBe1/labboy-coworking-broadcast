@@ -57,3 +57,13 @@ Playwright ใช้ Microsoft Edge ที่ติดตั้งใน Windows
 สี Web UI อยู่ใน `web/dashboard.css`; ทุกครั้งที่แก้สีให้อัปเดต `WEB_WCAG_TEXT_PAIRS` / `WEB_WCAG_EDGE_PAIRS` ใน `check_contrast.py` และตรวจซ้ำ ส่วนไฟล์ฟอนต์ใน `web/fonts/` มีไว้ให้ local HTTP server เสิร์ฟได้ภายใน root เดียวกับหน้าเว็บ
 
 GitHub Actions รันชุดตรวจบน Windows ทุก push/PR และเก็บภาพหน้าจอเป็น artifact. รายละเอียดผลตรวจครั้งล่าสุดอยู่ใน `REVIEW.md`
+
+## Close lifecycle และชุดตรวจเบื้องต้น
+
+`_on_closing` ทำงานบน WinForms UI thread ต้องคืน `False` ทันทีระหว่างรอการยืนยัน ห้ามเรียก `evaluate_js`, `destroy` หรือรอ process ตรงนั้น `_queue_close_confirmation` แสดง dialog ผ่าน worker; `confirm_exit` ตอบ bridge ทันทีแล้วให้ `_finish_exit` หยุด process tree, รอ reader และคืน Sleep/tray ก่อนเรียก `window.destroy` โดย `close_accepted=True` ขั้นตอน `_shutdown` ทำซ้ำได้และไม่ถือ controller lock ขณะรอ child process
+
+การยกเลิก dialog เรียก `cancel_exit` เพื่อให้กดปิดครั้งต่อไปได้ ระหว่างปิด API ปฏิเสธงานใหม่และล้าง pending test/restart; ถ้าหยุด process tree ไม่สำเร็จจะคงหน้าต่างไว้พร้อมข้อความให้ลองปิดใหม่ ไม่ปิดแค่ process พ่อแล้วซ่อนปัญหา
+
+`tests/smoke_shutdown.py` เปิด WebView2 จริงแยก process พร้อม monitor พ่อ–ลูกจำลอง แต่ละกรณีมี timeout และ cleanup เฉพาะ PID ที่ชุดทดสอบสร้าง ใช้ชื่อ tray ทดสอบเฉพาะตัว ไม่แตะ GUI mutex/รหัส/Run registry/monitor จริง CI ใช้ `--without-system-tray` เพราะ runner อาจไม่มี Explorer notification area; การซ่อนและหยุดไอคอน tray จริงทดสอบในชุด local ครบ 6 กรณี
+
+`ทดสอบระบบเบื้องต้น.bat` เรียก `tests/run_basic_checks.py` รวบรวม unit/browser/native/contrast/EXE pipe เป็นรายงาน `build/basic-checks/*.txt` ชุดนี้ไม่ build หรืออัปเดตแอปเอง

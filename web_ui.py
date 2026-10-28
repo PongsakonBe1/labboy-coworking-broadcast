@@ -114,6 +114,9 @@ class BroadcastController:
         self.observed_keys: set[str] = set()
         self.sent_keys: set[str] = set()
         self.shutting_down = False
+        self.shutdown_error = ""
+        self._shutdown_gate = threading.Lock()
+        self._shutdown_complete = threading.Event()
         self.pending_restart = False
         self.seen_booking_events: set[str] = set()
         self.activities: deque[dict[str, str]] = deque(maxlen=40)
@@ -230,10 +233,10 @@ class BroadcastController:
     def get_state(self) -> dict[str, Any]:
         with self.lock:
             now = datetime.now()
-            if self.process is not None and self.process.poll() is None:
+            if not self.shutting_down and not self.shutdown_error and self.process is not None and self.process.poll() is None:
                 if self.is_monitor_session:
-                    self.status = self.status if self.read_error or self.auth_error else "กำลังตรวจตาราง"
-                    if not self.read_error and not self.auth_error:
+                    self.status = self.status if self.read_error or self.auth_error or self.shutdown_error else "กำลังตรวจตาราง"
+                    if not self.read_error and not self.auth_error and not self.shutdown_error:
                         self.status_kind = "green" if self.monitor_mode == "ใช้งานจริง" else "blue"
                 else:
                     self.status = "กำลังทดสอบเสียง"
@@ -252,6 +255,7 @@ class BroadcastController:
             self._update_tray_status()
             return {
                 "running": bool(self.process and self.process.poll() is None),
+                "closing": self.shutting_down,
                 "monitor_running": bool(self.process and self.process.poll() is None and self.is_monitor_session),
                 "is_live": self.monitor_mode == "ใช้งานจริง",
                 "status": self.status, "status_kind": self.status_kind,
@@ -295,7 +299,7 @@ class BroadcastController:
             and (row["end_dt"] - now).total_seconds() >= -90
             and row.get("alert") not in {"ส่งเสียงแล้ว", "ข้าม · ถูกระงับ", "ข้าม · ไม่พบสถานะใช้"}
         ]
-        if (not candidates or self.monitor_mode != "ใช้งานจริง" or not self.is_monitor_session
+        if (self.shutting_down or not candidates or self.monitor_mode != "ใช้งานจริง" or not self.is_monitor_session
                 or not self.process or self.process.poll() is not None):
             return None
         row = min(candidates, key=lambda item: item["end_dt"])
@@ -397,6 +401,7 @@ class BroadcastController:
             self.started_at = datetime.now()
             self.read_count = self.successes = self.failures = 0
             self.read_error = ""
+            self.shutdown_error = ""
             self.auth_error = False
             self.status = "กำลังเริ่มตรวจตาราง"
             self.status_kind = "green" if self.monitor_mode == "ใช้งานจริง" else "blue"
@@ -415,15 +420,17 @@ class BroadcastController:
                         self._handle_log(line)
         code = process.wait()
         with self.lock:
-            if self.process is process:
-                self.process = None
+            if self.process is not process:
+                return
+            self.process = None
             self.is_monitor_session = False
             self._stop_awake_thread()
             intentional_stop = self.intentional_stop
             self.intentional_stop = False
-            self.status = ("หยุดชั่วคราว · ไม่มีการประกาศเสียง" if intentional_stop or code == 0
+            self.status = ("กำลังหยุดและปิดโปรแกรม" if self.shutting_down else
+                           "หยุดชั่วคราว · ไม่มีการประกาศเสียง" if intentional_stop or code == 0
                            else f"ระบบหยุดด้วยข้อผิดพลาด ({code})")
-            self.status_kind = "amber" if intentional_stop or code == 0 else "red"
+            self.status_kind = "amber" if self.shutting_down or intentional_stop or code == 0 else "red"
             self._append_activity("หยุดการตรวจตาราง", title="หยุดการตรวจตาราง",
                                   subtitle="หยุดชั่วคราวตามคำสั่ง" if intentional_stop else
                                   ("ระบบหยุดทำงาน" if code == 0 else f"ออกด้วยรหัส {code}"),
@@ -650,18 +657,20 @@ class BroadcastController:
         return {"ok": True}
 
     @staticmethod
-    def _terminate_tree(process: subprocess.Popen[str]) -> None:
+    def _terminate_tree(process: subprocess.Popen[str]) -> bool:
         if process.poll() is not None:
-            return
+            return True
         try:
-            subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                           timeout=8, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
-        except Exception:
-            try:
-                process.kill()
-            except Exception:
-                pass
+            result = subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                    timeout=8, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False)
+            if result.returncode != 0 and process.poll() is None:
+                return False
+            process.wait(timeout=3)
+            return True
+        except (OSError, subprocess.TimeoutExpired):
+            # อย่าปิดแค่ process พ่อแล้วปล่อย monitor/browser ลูกค้างเงียบ ๆ.
+            return process.poll() is not None
 
     def test_speaker(self, room: str) -> dict[str, Any]:
         if self.shutting_down or self.pending_test_room:
@@ -913,52 +922,104 @@ class BroadcastController:
 
     def request_exit_from_tray(self) -> None:
         if self.process and self.process.poll() is None and self.window:
-            self.pending_close = True
-            self.window.show()
-            self.window.evaluate_js("window.showCloseConfirm()")
+            self._queue_close_confirmation()
         else:
+            self.confirm_exit()
+
+    def _queue_close_confirmation(self) -> None:
+        with self.lock:
+            if self.pending_close or self.shutting_down:
+                return
+            self.pending_close = True
+
+        def show_prompt() -> None:
+            try:
+                self.show_window()
+                if self.window:
+                    # FormClosing ต้องคืนค่าให้ UI thread ก่อนเรียก WebView/JavaScript.
+                    self.window.evaluate_js("window.showCloseConfirm(); undefined;")
+            except Exception:
+                self.cancel_exit()
+
+        threading.Thread(target=show_prompt, name="labboy-close-prompt", daemon=True).start()
+
+    def cancel_exit(self) -> dict[str, bool]:
+        with self.lock:
+            self.pending_close = False
+        return {"ok": True}
+
+    def confirm_exit(self) -> dict[str, bool]:
+        with self.lock:
+            if self.shutting_down:
+                return {"ok": True, "closing": True}
+            self.shutting_down = True
+            self.pending_close = False
+            self.pending_test_room = None
+            self.resume_after_test = self.pending_restart = False
+            self.status = "กำลังหยุดและปิดโปรแกรม"
+            self.status_kind = "amber"
+        # Bridge คืนคำตอบทันที ไม่รอ taskkill หรือ destroy_window/WinForms.Invoke.
+        threading.Thread(target=self._finish_exit, name="labboy-shutdown", daemon=True).start()
+        return {"ok": True, "closing": True}
+
+    def _finish_exit(self) -> None:
+        if self._shutdown():
             self.close_accepted = True
             if self.window:
                 self.window.destroy()
-
-    def confirm_exit(self) -> dict[str, bool]:
-        self.close_accepted = True
-        self._shutdown()
-        if self.window:
-            self.window.destroy()
-        return {"ok": True}
+        else:
+            with self.lock:
+                self.shutting_down = False
+                self.shutdown_error = "หยุดตัวตรวจตารางไม่สำเร็จ · กรุณาลองปิดอีกครั้ง"
+                self.status = self.shutdown_error
+                self.status_kind = "red"
 
     def _on_closing(self) -> bool:
         if self.close_accepted:
-            self._shutdown()
             return True
-        if self.close_to_tray and self.ensure_tray_icon():
-            if self.window:
-                self.window.hide()
+        if self.shutting_down:
+            return False
+        if self.close_to_tray:
+            def hide_or_close() -> None:
+                if self.ensure_tray_icon() and self.window:
+                    self.window.hide()
+                elif self.process and self.process.poll() is None:
+                    self._queue_close_confirmation()
+                else:
+                    self.confirm_exit()
+            threading.Thread(target=hide_or_close, name="labboy-hide-window", daemon=True).start()
             return False
         if self.process and self.process.poll() is None:
-            self.pending_close = True
-            if self.window:
-                self.window.evaluate_js("window.showCloseConfirm()")
+            self._queue_close_confirmation()
             return False
-        self._shutdown()
-        return True
+        self.confirm_exit()
+        return False
 
-    def _shutdown(self) -> None:
-        self.shutting_down = True
-        self.pending_test_room = None
-        self.resume_after_test = False
-        self.pending_restart = False
-        process = self.process
-        if process and process.poll() is None:
-            self._terminate_tree(process)
-        self._stop_awake_thread()
-        if self.tray_icon is not None:
-            try:
-                self.tray_icon.stop()
-            except Exception:
-                pass
-            self.tray_icon = None
+    def _shutdown(self) -> bool:
+        # เรียกซ้ำได้จาก worker และ finally โดยไม่หยุด process/ถาดระบบซ้ำ.
+        with self._shutdown_gate:
+            if self._shutdown_complete.is_set():
+                return True
+            with self.lock:
+                self.shutting_down = True
+                self.pending_test_room = None
+                self.resume_after_test = self.pending_restart = False
+                self.intentional_stop = True
+                process = self.process
+            if process and process.poll() is None and not self._terminate_tree(process):
+                return False
+            reader = self.reader_thread
+            if reader and reader is not threading.current_thread():
+                reader.join(timeout=2)
+            self._stop_awake_thread()
+            if self.tray_icon is not None:
+                try:
+                    self.tray_icon.stop()
+                except Exception:
+                    pass
+                self.tray_icon = None
+            self._shutdown_complete.set()
+            return True
 
 
 class DesktopAPI:
@@ -969,6 +1030,8 @@ class DesktopAPI:
 
     def _call(self, name: str, *args: Any, **kwargs: Any) -> Any:
         with self._controller.lock:
+            if self._controller.shutting_down and name != "get_state":
+                return {"ok": False, "message": "กำลังปิดโปรแกรม"}
             return getattr(self._controller, name)(*args, **kwargs)
 
     def startup(self) -> dict[str, Any]:
@@ -1004,6 +1067,9 @@ class DesktopAPI:
     def confirm_exit(self) -> dict[str, bool]:
         # ปล่อย lock ขณะรอ child process ปิด เพื่อไม่ขวาง reader thread.
         return self._controller.confirm_exit()
+
+    def cancel_exit(self) -> dict[str, bool]:
+        return self._controller.cancel_exit()
 
 
 def run() -> None:

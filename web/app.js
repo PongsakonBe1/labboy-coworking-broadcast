@@ -12,6 +12,7 @@ let isSettingsView = false;
 let settingsDirty = false;
 let dismissedAlert = '';
 let refreshPending = false;
+let closeConfirmPending = false;
 
 const THAI_DAYS = ['วันอาทิตย์', 'วันจันทร์', 'วันอังคาร', 'วันพุธ', 'วันพฤหัสบดี', 'วันศุกร์', 'วันเสาร์'];
 const THAI_MONTHS = [
@@ -87,15 +88,22 @@ function showConfirm(title, message, action = 'ยืนยัน', tone = 'prim
 }
 
 window.showCloseConfirm = async () => {
-  const accepted = await showConfirm(
-    'หยุดและปิดโปรแกรมหรือไม่',
-    'ระบบกำลังตรวจตารางอยู่ การปิดโปรแกรมจะหยุดการประกาศเสียงอัตโนมัติ',
-    'หยุดและปิด',
-    'warning'
-  );
-  if (accepted) {
-    await call('confirm_exit');
-  }
+  if (closeConfirmPending) return;
+  closeConfirmPending = true;
+  try {
+    const accepted = await showConfirm(
+      'หยุดและปิดโปรแกรมหรือไม่',
+      'ระบบกำลังตรวจตารางอยู่ การปิดโปรแกรมจะหยุดการประกาศเสียงอัตโนมัติ',
+      'หยุดและปิด',
+      'warning'
+    );
+    if (accepted) {
+      await call('confirm_exit');
+      setStatus('กำลังหยุดและปิดโปรแกรม', 'amber');
+    } else {
+      await call('cancel_exit');
+    }
+  } finally { closeConfirmPending = false; }
 };
 
 function setStatus(text, kind = 'blue') {
@@ -364,6 +372,10 @@ function update(state) {
   renderRooms(state.room_cards);
   renderBookings(state.bookings);
   renderActivity(state.activities);
+  $('topActionBtn').disabled = !!state.closing;
+  $('topPasswordBtn').disabled = !!state.closing;
+  $('liveSwitch').disabled = !!state.closing || state.running;
+  document.querySelectorAll('.test-speaker-btn').forEach(button => { button.disabled = !!state.closing; });
   setAlert(state);
 
   // เติมข้อมูลหน้าตั้งค่า
