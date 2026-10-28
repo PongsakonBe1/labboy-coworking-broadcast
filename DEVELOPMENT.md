@@ -4,6 +4,7 @@
 
 - `labboy_coworking_broadcast.py` เป็นจุดเริ่มโปรแกรมเดสก์ท็อป
 - `web_ui.py` เชื่อม pywebview กับ monitor, Windows Credential Manager, tray และ startup
+- `desktop_diagnostics.py` ตรวจแบบอ่านอย่างเดียว แยกจาก monitor และกฎประกาศเสียง; ไม่ import/แก้ `room_speaker_monitor.py`
 - `web/` เก็บส่วนติดต่อผู้ใช้ HTML/CSS/JavaScript; monitor ยังคงเป็น process แยก
 - `room_speaker_monitor.py` อ่านปฏิทิน K-Room ผ่าน Playwright และส่งคำสั่ง ISAPI ไปยังลำโพง Hikvision
 - GUI รับ log จาก monitor ผ่าน stdout; อย่าเปลี่ยนรูปแบบ log โดยไม่ปรับ parser ใน GUI พร้อมกัน
@@ -67,3 +68,17 @@ GitHub Actions รันชุดตรวจบน Windows ทุก push/PR �
 `tests/smoke_shutdown.py` เปิด WebView2 จริงแยก process พร้อม monitor พ่อ–ลูกจำลอง แต่ละกรณีมี timeout และ cleanup เฉพาะ PID ที่ชุดทดสอบสร้าง ใช้ชื่อ tray ทดสอบเฉพาะตัว ไม่แตะ GUI mutex/รหัส/Run registry/monitor จริง CI ใช้ `--without-system-tray` เพราะ runner อาจไม่มี Explorer notification area; การซ่อนและหยุดไอคอน tray จริงทดสอบในชุด local ครบ 6 กรณี
 
 `ทดสอบระบบเบื้องต้น.bat` เรียก `tests/run_basic_checks.py` รวบรวม unit/browser/native/contrast/EXE pipe เป็นรายงาน `build/basic-checks/*.txt` ชุดนี้ไม่ build หรืออัปเดตแอปเอง
+
+## Built-in diagnostics และการแก้ไขจากหน้าจอ
+
+`start_diagnostics` snapshot ค่าใน controller แล้วตรวจใน daemon worker โดยไม่ถือ controller lock ระหว่าง HTTP I/O ผลถูก publish ทีละแถวและส่งผ่าน `get_state`; ไม่ส่ง password/raw exceptions กลับ bridge จำกัดการเริ่มซ้ำ 60 วินาที และเมื่อ shutdown จะยกเลิกการตรวจที่เหลือ ไม่มี browser/process เพิ่มจาก diagnostics
+
+`probe_calendar` ใช้ GET อ่าน HTML ขนาดจำกัด ตรวจ HTTP/SSL/timeout และ `#calendar` เท่านั้น ผลการอ่าน FullCalendar จริงอ้างอิง read_count/last_read ของ monitor รอบปัจจุบัน ไม่ถือว่าแค่ HTML มีปฏิทินแปลว่าอ่าน booking สำเร็จ `probe_speaker` ใช้ HTTP Digest GET capabilities ที่รองรับในอุปกรณ์ปัจจุบัน ไม่มี PUT/POST/play ใช้ username เดียวกับ SPEAKER_USERNAME ของ monitor HTTP 401 เสนอแก้รหัส, 403/404 หรือรูปแบบไม่ตรงให้ผู้ดูแลตรวจรุ่นอุปกรณ์ ไม่เหมารวมว่า auth ผิด
+
+ผลเป็น snapshot พร้อมเวลา เปลี่ยนการตั้งค่าที่เกี่ยวข้อง/รหัส/เริ่มหยุด monitor จะ invalidate ผลเดิม; theme/startup อย่างเดียวไม่ invalidate การบันทึกรหัส/URL/อุปกรณ์ใหม่ระหว่างรันจะเสนอ restart เพราะ child process ใช้ env/config ตอนเริ่มเท่านั้น
+
+`restart_monitor` ใช้ pending_restart เดิมหลังยืนยันจาก UI ไม่เปลี่ยนโหมด API pause จากผู้ใช้จะล้าง pending restart/test/resume; pause ภายในใช้ for_transition=True การตัดสินคิวหลัง reader จบอยู่ภายใต้ lock เดียวกัน ป้องกันคำสั่งหยุดสวนกับการเริ่มใหม่ โดยไม่แก้ regex/log protocol/trigger state ของ monitor
+
+`tests/test_diagnostics.py` ใช้ HTTP server local และ requests/process จำลอง ครอบคลุมเว็บเปลี่ยนหน้า, timeout, 401/403, HTTP 200 ที่ body เป็น error, cancellation, snapshot stale, cooldown และ restart; `tests/test_web_ui.py` ตรวจ help view/confirmation/สี/ปุ่ม disabled/ขนาดจอและ DOM reuse
+
+ปลายทาง capabilities ที่อ่านได้โดยไม่ challenge รหัสจะรายงานเพียงอ่านอุปกรณ์ได้ ยังยืนยันรหัสไม่ได้; ผลยืนยันรหัสต้องผ่าน Digest challenge และ response ที่ถูกต้อง ไม่ถือ HTTP 200 อย่างเดียวว่ารหัสถูก

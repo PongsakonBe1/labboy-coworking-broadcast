@@ -28,6 +28,12 @@ WEB_WCAG_TEXT_PAIRS = [
     ("gray badge", "text-sub", "color-gray-soft", 4.5),
     ("primary action", "on-action", "action-blue", 4.5),
     ("resume action", "on-action", "action-green", 4.5),
+    ("diagnostic description", "text-sub", "bg-surface", 4.5),
+    ("diagnostic green mark", "color-green", "bg-surface", 4.5),
+    ("diagnostic amber mark", "color-amber", "bg-surface", 4.5),
+    ("diagnostic red mark", "color-red", "bg-surface", 4.5),
+    ("diagnostic caption", "text-sub", "bg-window", 4.5),
+    ("diagnostic disabled text", "text-sub", "bg-inner", 4.5),
 ]
 WEB_WCAG_EDGE_PAIRS = [
     ("control border on surface", "control-border", "bg-surface", 3.0),
@@ -39,6 +45,7 @@ WEB_WCAG_EDGE_PAIRS = [
     ("focus ring on surface", "color-blue", "bg-surface", 3.0),
     ("focus ring on sidebar", "color-blue", "bg-sidebar", 3.0),
     ("focus ring on pale button", "color-blue", "color-blue-soft", 3.0),
+    ("diagnostic disabled control border", "control-border", "bg-inner", 3.0),
 ]
 
 

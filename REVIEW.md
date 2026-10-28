@@ -27,6 +27,8 @@
 | monitor EXE ส่ง pipe ภาษาไทยเป็น cp874 แต่ GUI อ่าน UTF‑8 จึงไม่มีรายการและ error ค้าง แม้ไฟล์ log อ่านตารางสำเร็จ | บังคับ UTF‑8 ใน runtime hook ก่อนสร้าง logging handlers พร้อมทดสอบ EXE จริงใน build/CI | `pyinstaller_hooks/monitor_utf8_stdio.py`, `สร้างโปรแกรม EXE.bat`, `tests/smoke_monitor_exe.py` |
 | กดปิดหน้าต่างค้าง: FormClosing รอ evaluate_js บน UI thread จนเกิด deadlock (จำลองได้และมี stack trace) | คืนค่าจาก closing event ทันที ย้าย prompt/cleanup ไป worker คืน bridge ก่อนหยุด process และปิด native window หลัง cleanup เสร็จ | `_queue_close_confirmation`, `confirm_exit`, `_finish_exit`, `_on_closing`, `_shutdown`, `web/app.js` |
 | การปิดซ้ำ/ยกเลิกอาจทำให้คิวไม่ตรงกันหรือเริ่มงานใหม่ระหว่างปิด | dedupe prompt/exit worker, cancel_exit, ปฏิเสธงานใหม่ขณะปิด, ล้าง pending restart/test และทำ cleanup ซ้ำได้ | `DesktopAPI`, `cancel_exit`, `_shutdown` |
+| ทีมต้องใช้ชุดทดสอบ Python/อ่าน log เมื่อพบปัญหา | เพิ่มหน้า “ตรวจและแก้ไขปัญหา” ใน EXE พร้อมผลทีละข้อและปุ่มแก้ไขตามสาเหตุ | `desktop_diagnostics.py`, `start_diagnostics`, `renderDiagnostics` |
+| หลังเปลี่ยนรหัส/URL/อุปกรณ์อาจยังใช้ค่าเดิมใน child process | ระบุ pending ค่าใหม่และเสนอ restart หลังยืนยัน ใช้โหมดเดิมและยกเลิกการเริ่มต่อเมื่อผู้ใช้หยุดเอง | `restart_monitor`, `pause_monitor`, `_read_output`, `_read_test_output` |
 
 ## ดีไซน์
 
@@ -38,7 +40,7 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 
 ## ผลทดสอบ
 
-- Python unittest 51 กรณี: ผ่าน (รวม updater 5 กรณี)
+- Python unittest 74 กรณี: ผ่าน (รวม updater 5 กรณี)
 - JavaScript status/filter/priority/outcome suite: ผ่าน
 - `check_contrast.py`: ผ่านคู่สี legacy และ Web UI ครบ light/dark/high_contrast
 - ตรวจสีข้อความที่ render จริงใน dashboard, ตั้งค่า, dialog รายละเอียดห้องและรหัสผ่านทั้ง 3 ธีม: ผ่าน
@@ -50,6 +52,9 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 - ตรวจ Run registry แบบอ่านอย่างเดียว: ชี้มายัง EXE ของ installation ปัจจุบันและไฟล์มีอยู่จริง; ยังไม่ได้ทดสอบ sign-in Windows รอบใหม่
 - WebView2 จริงและ JavaScript/Python bridge: ผ่าน โดย mock รหัส, startup และ monitor
 - Native shutdown WebView2 จริงครบ 6 กรณี: X, tray exit, confirm button, idle close, cancel/retry, hide-to-tray/exit พร้อมไอคอน tray ทดสอบจริง; process พ่อ–ลูกจำลองไม่ค้าง และ cancel/hide ไม่หยุด monitor จำลองก่อนยืนยัน
+- Built-in diagnostics: ไม่หยุด/เริ่ม monitor หรือสั่งเสียง, ไม่คืนรหัสให้ bridge, จำกัดการตรวจซ้ำ, ยกเลิกเมื่อปิด, ตรวจ stale snapshot และค่าใหม่ที่ child ยังไม่ใช้: ผ่าน
+- ตรวจ 401/403, HTTP 200 ที่ body เป็น error, เว็บไม่มีปฏิทิน และ timeout ด้วย response/server จำลอง: ผ่าน; ตรวจ GET หน้า K‑Room จริงแบบอ่านอย่างเดียวพบเว็บและส่วนปฏิทิน ไม่มีการใช้รหัสลำโพงในการตรวจเว็บ
+- Help view ทั้ง 3 ธีม รวมปุ่ม disabled, 1280×940, 1326×678 และ 900×540 เลื่อนภายในได้ พร้อม confirmation ก่อน restart: ผ่าน
 - ทดสอบ lifecycle เพิ่ม: worker ไม่ขวาง bridge, prompt ไม่ซ้ำ, cleanup ซ้ำได้, หยุด tree ล้มเหลวคงหน้าต่างพร้อม retry, reader เก่าไม่ล้าง process ใหม่ และไม่เริ่มงานเพิ่มระหว่างปิด
 - monitor EXE จริงส่งข้อความไทยผ่าน pipe แบบ UTF‑8 strict: ผ่าน โดยใช้ URL invalid ในโฟลเดอร์ชั่วคราว ไม่เปิดเว็บหรือส่งเสียง; unit test จำลอง cp874/cp1252 พร้อมช่วงเวลา en dash และทดสอบว่า parser เดิมรับรายการจอง/ล้าง read_error ได้
 - สร้าง EXE ของ GUI และ monitor ด้วย PyInstaller: ผ่านทั้งสองไฟล์ใน `build/release`; ไม่เขียนทับ executable เดิมที่กำลังรัน และยังไม่ได้สั่งใช้งาน EXE ชุดใหม่กับลำโพงจริง
@@ -73,3 +78,5 @@ py -3 tests/smoke_monitor_exe.py
 ภาพจากการทดสอบอยู่ใน `build/ui-review/` (ไม่ commit); ภาพตัวอย่างสาธารณะใน `docs/ui-preview.png` ใช้ข้อมูลจำลองและ IP เอกสาร `192.0.2.x`
 
 ข้อจำกัด: ยังไม่ได้ทดสอบกับ NVDA/Narrator จริง หรือ sign-in Windows รอบใหม่ การจำลองยืนยันการแสดงผลและการเรียก process ได้ แต่ไม่ได้ยืนยันเสียงทางกายภาพ หรือเครือข่าย/โครงสร้าง K‑Room ในอนาคต ต้องตรวจตามสภาพแวดล้อมเมื่อเปลี่ยนอุปกรณ์หรือเว็บ ผลนี้ไม่ใช่การรับรอง Apple HIG หรือ WCAG ทุกข้อ
+
+งานรอบนี้ทำข้อ 1–2 ของแผนช่วยเหลือในแอป การส่งรายงาน ZIP และอัปเดต/ย้อนรุ่นจาก UI ยังเป็นรอบถัดไป การวินิจฉัยลำโพงยืนยันการตอบ capabilities/สิทธิ์เท่านั้น ไม่ยืนยันไฟล์เสียงหรือเสียงทางกายภาพ; ตรวจ HTML เบื้องต้นควบคู่ผล monitor ไม่แทนการอ่าน FullCalendar จริง และไม่มีการเปลี่ยนนโยบายประกาศระหว่างเว็บขัดข้อง

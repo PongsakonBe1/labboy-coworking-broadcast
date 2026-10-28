@@ -9,6 +9,8 @@ let bookingsSignature = '';
 let activitySignature = '';
 let toastTimer = null;
 let isSettingsView = false;
+let isHelpView = false;
+let diagnosticSignature = '';
 let settingsDirty = false;
 let dismissedAlert = '';
 let refreshPending = false;
@@ -319,8 +321,8 @@ function setAlert(state) {
   banner.classList.toggle('hidden', !message || message === dismissedAlert);
   banner.classList.toggle('amber', !state.auth_error);
   setText('alertText', message);
-  $('alertAction').textContent = state.auth_error ? 'แก้รหัสลำโพง' : (message ? 'เปิดบันทึก Log' : '');
-  $('alertAction').onclick = () => (state.auth_error ? openPassword() : call('open_logs'));
+  $('alertAction').textContent = state.auth_error ? 'แก้รหัสลำโพง' : (message ? 'ตรวจและแก้ไข' : '');
+  $('alertAction').onclick = () => (state.auth_error ? openPassword() : openHelp());
 }
 
 /* ------------------- Master Update Loop ------------------- */
@@ -372,9 +374,12 @@ function update(state) {
   renderRooms(state.room_cards);
   renderBookings(state.bookings);
   renderActivity(state.activities);
+  renderDiagnostics(state.diagnostics);
   $('topActionBtn').disabled = !!state.closing;
   $('topPasswordBtn').disabled = !!state.closing;
   $('liveSwitch').disabled = !!state.closing || state.running;
+  $('helpToggleBtn').disabled = !!state.closing;
+  $('runDiagnosticsBtn').disabled = !!state.closing || !!state.diagnostics?.running;
   document.querySelectorAll('.test-speaker-btn').forEach(button => { button.disabled = !!state.closing; });
   setAlert(state);
 
@@ -459,9 +464,16 @@ async function refresh() {
 
 /* ------------------- การสลับ View ระหว่าง Main / Settings ------------------- */
 function toggleView() {
-  isSettingsView = !isSettingsView;
-  $('mainView').classList.toggle('hidden', isSettingsView);
+  setView(isSettingsView ? 'main' : 'settings');
+}
+
+function setView(view) {
+  isSettingsView = view === 'settings';
+  isHelpView = view === 'help';
+  $('mainView').classList.toggle('hidden', view !== 'main');
   $('settingsView').classList.toggle('hidden', !isSettingsView);
+  $('helpView').classList.toggle('hidden', !isHelpView);
+  $('helpToggleBtn').textContent = isHelpView ? 'กลับหน้าหลัก' : 'ตรวจระบบ';
 
   const btnText = $('viewToggleText');
   const btnIcon = $('viewToggleIcon');
@@ -473,6 +485,69 @@ function toggleView() {
     btnText.textContent = 'ตั้งค่า';
     btnIcon.textContent = '⚙';
   }
+}
+
+function openHelp() {
+  setView('help');
+  $('helpTitle').focus();
+  if (!current?.diagnostics?.rows?.length && !current?.diagnostics?.running) runDiagnostics();
+}
+
+async function runDiagnostics() {
+  try {
+    const result = await call('start_diagnostics');
+    if (!result.ok) notify(result.message || 'เริ่มตรวจระบบไม่ได้');
+    await refresh();
+  } catch (_) { showNotice('เริ่มตรวจระบบไม่ได้', 'ลองเปิดหน้าตรวจระบบอีกครั้ง'); }
+}
+
+const diagnosticActions = {
+  retry:'ตรวจอีกครั้ง', settings:'เปิดตั้งค่า', password:'แก้รหัสลำโพง',
+  restart:'เริ่มตัวตรวจใหม่', start:'เริ่มตรวจตาราง', logs:'เปิดบันทึก', installation:'ดูวิธีอัปเดต'
+};
+
+function renderDiagnostics(report) {
+  report = report || {running:false,rows:[],checked_at:'',stale:false};
+  const signature = JSON.stringify(report);
+  if (signature === diagnosticSignature) return;
+  diagnosticSignature = signature;
+  const rows = report.rows || [];
+  setText('diagnosticSummary', report.running ? 'กำลังตรวจระบบ…' : report.stale ? 'ข้อมูลอาจเปลี่ยนหลังตรวจ · กรุณาตรวจใหม่' :
+    !rows.length ? 'พร้อมตรวจระบบ' : rows.some(r=>r.kind==='red') ? 'พบปัญหาที่ควรแก้ไข' :
+    rows.some(r=>r.kind==='amber') ? 'มีรายการที่ควรตรวจเพิ่มเติม' : 'ตรวจระบบเรียบร้อย');
+  setText('diagnosticProgress', report.running ? `ตรวจแล้ว ${rows.length} ข้อ ระบบประกาศเดิมยังทำงานตามสถานะปัจจุบัน` :
+    report.checked_at ? `ตรวจเมื่อ ${report.checked_at} · ผลนี้เป็นข้อมูล ณ เวลาที่ตรวจ` : 'ผลตรวจจะแสดงทีละข้อ พร้อมขั้นตอนที่ทำต่อได้');
+  $('runDiagnosticsBtn').textContent = report.running ? 'กำลังตรวจ…' : rows.length ? 'ตรวจอีกครั้ง' : 'เริ่มตรวจระบบ';
+  reuseRows($('diagnosticRows'), rows.map(r=>({key:r.key,className:'diagnostic-row',html:`
+    <span class="diagnostic-mark ${esc(r.kind)}" aria-hidden="true">${r.kind==='green'?'✓':r.kind==='red'?'!':r.kind==='amber'?'!':'•'}</span>
+    <div><h3>${esc(r.title)} <span class="diagnostic-state">· ${r.kind==='green'?'ผ่าน':r.kind==='red'?'ต้องแก้ไข':r.kind==='amber'?'ควรตรวจสอบ':'ข้อมูล'}</span></h3><p class="diagnostic-detail">${esc(r.detail)}</p></div>
+    ${diagnosticActions[r.action] ? `<button class="button quiet" data-repair="${esc(r.action)}">${esc(diagnosticActions[r.action])}</button>` : ''}
+  `})), 'article');
+  $('diagnosticRows').querySelectorAll('[data-repair]').forEach(button=>{
+    button.disabled = !!report.running || !!report.stale;
+    button.onclick = ()=>repairDiagnostic(button.dataset.repair);
+  });
+}
+
+async function repairDiagnostic(action) {
+  if (action === 'retry') return runDiagnostics();
+  if (action === 'settings') { setView('settings'); $('settingsScheduleUrl').focus(); return; }
+  if (action === 'password') return openPassword();
+  if (action === 'logs') return call('open_logs');
+  if (action === 'installation') return showNotice('อัปเดตไฟล์โปรแกรม', 'เปิดโฟลเดอร์ LabBoy แล้วเรียก อัปเดตโปรแกรม.bat โดยต้องมี EXE ของหน้าต่างและตัวตรวจตารางอยู่ในชุดเดียวกัน');
+  if (action === 'start' && !current?.running) return handleActionClick();
+  if (action !== 'restart') return;
+  const warning = current?.next_broadcast && Number(current.next_broadcast.seconds) < 120
+    ? `\nเหลือ ${current.next_broadcast.eta} ก่อนประกาศรอบถัดไป การเริ่มใหม่อาจทำให้ตรวจช้าลง` : '';
+  const ok = await showConfirm('เริ่มตัวตรวจตารางใหม่?',
+    `ระบบจะหยุดตรวจชั่วครู่แล้วเริ่มต่อด้วยโหมดเดิม${warning}`, 'เริ่มตัวตรวจใหม่', 'warning');
+  if (!ok) return;
+  try {
+    const result = await call('restart_monitor');
+    if (!result.ok && result.needs_password) openPassword();
+    else notify(result.message || (result.ok ? 'กำลังเริ่มตัวตรวจใหม่' : 'เริ่มตัวตรวจใหม่ไม่ได้'));
+    await refresh();
+  } catch (_) { showNotice('เริ่มตัวตรวจใหม่ไม่ได้', 'ตรวจสถานะระบบแล้วลองอีกครั้ง'); }
 }
 
 /* ------------------- การสั่งงาน ------------------- */
@@ -634,6 +709,9 @@ async function saveSettingsSubmit(optionsOnly = false) {
 
 /* ------------------- Bind UI Events ------------------- */
 function bindEvents() {
+  $('helpToggleBtn').onclick = () => isHelpView ? setView('main') : openHelp();
+  $('runDiagnosticsBtn').onclick = runDiagnostics;
+  $('helpLogsBtn').onclick = () => call('open_logs');
   $('viewToggleBtn').onclick = toggleView;
   $('topActionBtn').onclick = handleActionClick;
   $('liveSwitch').onchange = handleModeChange;

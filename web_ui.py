@@ -18,6 +18,7 @@ from ctypes import wintypes
 from typing import Any
 
 import webview
+import desktop_diagnostics as diagnostics
 from room_config import EXAMPLE_CONFIG_PATH, ROOM_CONFIG_PATH, ROOMS, is_valid_ipv4
 from credentials import read_saved_speaker_password, save_speaker_password
 
@@ -91,6 +92,8 @@ class BroadcastController:
         self.appearance = str(self.preferences.get("appearance", "light"))
         self.rooms = {name: dict(device) for name, device in ROOMS.items()}
         self.password = self.read_password()
+        self._credentials_pending = False
+        self._settings_pending = False
         self.process: subprocess.Popen[str] | None = None
         self.reader_thread: threading.Thread | None = None
         self.monitor_mode = "ใช้งานจริง"
@@ -134,6 +137,11 @@ class BroadcastController:
         self.last_tray_title = ""
         self.close_accepted = False
         self.initialized = False
+        self._diagnostic_cancel = threading.Event()
+        self._diagnostic_thread: threading.Thread | None = None
+        self._diagnostic_revision = 0
+        self._diagnostic_last_started = -60.0
+        self.diagnostic_state: dict[str, Any] = {'running': False, 'checked_at': '', 'rows': [], 'stale': False}
         self.start_hidden = "--start-tray" in sys.argv
         self._load_sound_state()
         self._load_previous_logs()
@@ -256,6 +264,7 @@ class BroadcastController:
             return {
                 "running": bool(self.process and self.process.poll() is None),
                 "closing": self.shutting_down,
+                "diagnostics": {**self.diagnostic_state, 'rows': [dict(row) for row in self.diagnostic_state['rows']]},
                 "monitor_running": bool(self.process and self.process.poll() is None and self.is_monitor_session),
                 "is_live": self.monitor_mode == "ใช้งานจริง",
                 "status": self.status, "status_kind": self.status_kind,
@@ -398,6 +407,8 @@ class BroadcastController:
                 self.status_kind = "red"
                 return {"ok": False, "message": str(exc)}
             self.is_monitor_session = True
+            self._credentials_pending = False
+            self._settings_pending = False
             self.started_at = datetime.now()
             self.read_count = self.successes = self.failures = 0
             self.read_error = ""
@@ -405,6 +416,7 @@ class BroadcastController:
             self.auth_error = False
             self.status = "กำลังเริ่มตรวจตาราง"
             self.status_kind = "green" if self.monitor_mode == "ใช้งานจริง" else "blue"
+            self._invalidate_diagnostics()
             self._start_awake_thread()
             self._append_activity("เริ่มระบบตรวจตารางอัตโนมัติ", title="เริ่มระบบตรวจตาราง", subtitle="กำลังเชื่อมต่อ K-Room", kind="blue")
             self.reader_thread = threading.Thread(target=self._read_output, args=(self.process,), daemon=True)
@@ -441,10 +453,11 @@ class BroadcastController:
             self.resume_after_test = False
             restart = self.pending_restart
             self.pending_restart = False
-        if test_room and not self.shutting_down:
-            self._launch_test_process(test_room, resume)
-        elif restart and not self.shutting_down:
-            self.start_monitor(automatic=True)
+            # ตัดสินคิวขณะถือ lock เดียวกัน เพื่อให้ปุ่มหยุดยกเลิกการเริ่มต่อได้แน่นอน.
+            if test_room and not self.shutting_down:
+                self._launch_test_process(test_room, resume)
+            elif restart and not self.shutting_down:
+                self.start_monitor(automatic=True)
 
     def _handle_log(self, line: str) -> None:
         self.log_tail.append(line)
@@ -646,7 +659,12 @@ class BroadcastController:
         self.status_kind = "blue" if mode == "ทดลอง" else "green"
         return {"ok": True, "state": self.get_state()}
 
-    def pause_monitor(self) -> dict[str, Any]:
+    def pause_monitor(self, *, for_transition: bool = False) -> dict[str, Any]:
+        self._invalidate_diagnostics()
+        if not for_transition:
+            self.pending_restart = False
+            self.pending_test_room = None
+            self.resume_after_test = False
         process = self.process
         if process is None or process.poll() is not None:
             return {"ok": True, "state": self.get_state()}
@@ -688,7 +706,7 @@ class BroadcastController:
         if running:
             self.pending_test_room = room
             self.resume_after_test = True
-            self.pause_monitor()
+            self.pause_monitor(for_transition=True)
             return {"ok": True, "message": "หยุด monitor แล้ว จะเริ่มทดสอบและตรวจต่ออัตโนมัติ"}
         self._launch_test_process(room, resume=False)
         return {"ok": True}
@@ -765,10 +783,9 @@ class BroadcastController:
             self.intentional_stop = False
             self.status = result
             self.status_kind = kind
-        if resume and self.resume_after_test and not self.shutting_down:
-            self.resume_after_test = False
-            time.sleep(0.2)
-            self.start_monitor(automatic=True)
+            if resume and self.resume_after_test and not self.shutting_down:
+                self.resume_after_test = False
+                self.start_monitor(automatic=True)
 
     def save_password(self, password: str, restart: bool = False) -> dict[str, Any]:
         if not password:
@@ -776,12 +793,14 @@ class BroadcastController:
         try:
             save_speaker_password(password)
             self.password = password
+            self._credentials_pending = bool(self.process and self.process.poll() is None and self.is_monitor_session)
+            self._invalidate_diagnostics()
             self._append_activity("บันทึกรหัสลำโพง", title="บันทึกรหัสลำโพงแล้ว",
                                   subtitle="เก็บใน Windows Credential Manager", kind="green")
             if self.process and self.process.poll() is None:
                 if restart and self.is_monitor_session:
                     self.pending_restart = True
-                    self.pause_monitor()
+                    self.pause_monitor(for_transition=True)
                 return {"ok": True, "message": "บันทึกรหัสแล้ว" +
                         (" · กำลังเริ่มระบบใหม่" if restart else " · ใช้เมื่อเริ่มตรวจครั้งถัดไป")}
             result = self.start_monitor(automatic=True)
@@ -816,6 +835,7 @@ class BroadcastController:
                 updated_rooms[name] = {"number": number, "ip": ip, "audio_id": audio_id}
             if not updated_rooms:
                 return {"ok": False, "message": "ไม่พบรายการห้องที่ถูกต้อง"}
+        diagnostic_changed = url != self.schedule_url or updated_rooms != self.rooms
         self.schedule_url = url
         self.startup_enabled = bool(payload.get("startup_enabled", self.startup_enabled))
         self.close_to_tray = bool(payload.get("close_to_tray", self.close_to_tray))
@@ -842,6 +862,9 @@ class BroadcastController:
         elif self.tray_icon is not None:
             self.tray_icon.stop()
             self.tray_icon = None
+        if diagnostic_changed:
+            self._settings_pending = bool(self.process and self.process.poll() is None and self.is_monitor_session)
+            self._invalidate_diagnostics()
         deferred = bool(self.process and self.process.poll() is None)
         suffix = " · หยุดแล้วเริ่มระบบใหม่เพื่อใช้ URL/อุปกรณ์ที่แก้" if deferred else ""
         return {"ok": True, "message": "บันทึกการตั้งค่าแล้ว" + suffix,
@@ -851,6 +874,105 @@ class BroadcastController:
         with self.lock:
             self.activities.clear()
         return {"ok": True}
+
+    def _invalidate_diagnostics(self) -> None:
+        self._diagnostic_revision += 1
+        if self.diagnostic_state['rows'] or self.diagnostic_state['running']:
+            self.diagnostic_state['stale'] = True
+
+    def restart_monitor(self) -> dict[str, Any]:
+        """ใช้หลังผู้ใช้ยืนยันเท่านั้น ไม่เปลี่ยนโหมดหรือกฎประกาศเสียง."""
+        if self.shutting_down:
+            return {'ok': False, 'message': 'กำลังปิดโปรแกรม'}
+        if self.pending_test_room or (self.process and self.process.poll() is None and not self.is_monitor_session):
+            return {'ok': False, 'message': 'รอการทดสอบเสียงเสร็จก่อนเริ่มตัวตรวจใหม่'}
+        if self.pending_restart:
+            return {'ok': True, 'message': 'กำลังเริ่มตัวตรวจใหม่'}
+        if self.process and self.process.poll() is None:
+            self.pending_restart = True
+            self.pause_monitor(for_transition=True)
+            return {'ok': True, 'message': 'กำลังหยุดแล้วเริ่มตัวตรวจด้วยโหมดเดิม'}
+        return self.start_monitor(automatic=False)
+
+    def start_diagnostics(self) -> dict[str, Any]:
+        """เริ่มตรวจแบบอ่านอย่างเดียว โดยไม่หยุด monitor หรือสั่งเสียง."""
+        if self.shutting_down:
+            return {'ok': False, 'message': 'กำลังปิดโปรแกรม'}
+        if self.diagnostic_state['running']:
+            return {'ok': True, 'message': 'กำลังตรวจระบบอยู่'}
+        remaining = 60 - (time.monotonic() - self._diagnostic_last_started)
+        if remaining > 0:
+            return {'ok': False, 'message': f'ตรวจซ้ำได้อีก {int(remaining) + 1} วินาที เพื่อไม่ตรวจรหัสอุปกรณ์ถี่เกินไป'}
+        self._diagnostic_cancel = threading.Event()
+        self._diagnostic_last_started = time.monotonic()
+        self.diagnostic_state = {'running': True, 'checked_at': '', 'rows': [], 'stale': False}
+        snapshot = {'url': self.schedule_url, 'rooms': {name: dict(device) for name, device in self.rooms.items()},
+                    'password': self.password, 'username': os.environ.get('SPEAKER_USERNAME', 'admin'),
+                    'revision': self._diagnostic_revision}
+        self._diagnostic_thread = threading.Thread(target=self._run_diagnostics,
+            args=(snapshot, self._diagnostic_cancel), name='labboy-diagnostics', daemon=True)
+        self._diagnostic_thread.start()
+        return {'ok': True}
+
+    def _run_diagnostics(self, snapshot: dict[str, Any], cancel: threading.Event) -> None:
+        def publish(item: dict[str, str]) -> None:
+            with self.lock:
+                if not cancel.is_set() and not self.shutting_down:
+                    self.diagnostic_state['rows'].append(item)
+
+        try:
+            config = diagnostics.check_configuration(snapshot['url'], snapshot['rooms'])
+            publish(config)
+            try:
+                command = self._monitor_command()
+                present = Path(command[0]).is_file() and (IS_FROZEN or Path(command[-1]).is_file())
+            except (OSError, RuntimeError):
+                present = False
+            publish(diagnostics.row('files', 'ไฟล์ตัวตรวจตาราง', 'green' if present else 'red',
+                'พบไฟล์ที่ใช้เริ่มตัวตรวจตาราง' if present else 'ไฟล์ตัวตรวจไม่ครบ ให้ใช้ชุดอัปเดตที่มี EXE ทั้งสองไฟล์',
+                '' if present else 'installation'))
+            with self.lock:
+                running = bool(self.process and self.process.poll() is None)
+                recent = self.read_count > 0 and self.last_read and (datetime.now() - self.last_read).total_seconds() <= 90
+                if running and self.is_monitor_session and self._settings_pending:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'amber',
+                        'มี URL หรืออุปกรณ์ใหม่ที่บันทึกแล้ว แต่ตัวตรวจรอบนี้ยังใช้ค่าเดิม เริ่มตัวตรวจใหม่เพื่อใช้ค่าที่บันทึก', 'restart')
+                elif running and self.is_monitor_session and self._credentials_pending:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'amber',
+                        'มีรหัสใหม่ที่บันทึกแล้ว แต่ตัวตรวจรอบนี้ยังใช้รหัสเดิม เริ่มตัวตรวจใหม่เพื่อใช้รหัสที่บันทึก', 'restart')
+                elif running and self.is_monitor_session and recent and not self.read_error:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'green',
+                        f'ตัวตรวจทำงาน อ่านสำเร็จล่าสุด {self.last_read:%H:%M:%S}')
+                elif running and self.is_monitor_session and not self.read_error and self.started_at and self.read_count == 0 and (datetime.now() - self.started_at).total_seconds() < 45:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'blue',
+                        'ตัวตรวจเริ่มทำงานแล้ว กำลังรอผลอ่านรอบแรก ตรวจสถานะอีกครั้งหลังเริ่มระบบสักครู่', 'retry')
+                elif running and self.is_monitor_session:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'amber',
+                        'ตัวตรวจยังทำงาน แต่ยังไม่มีผลอ่านล่าสุดที่ยืนยันได้ ระบบเดิมจะลองใหม่ตามรอบ หากยังไม่กลับมาจึงเริ่มตัวตรวจใหม่', 'restart')
+                elif running:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'blue',
+                        'กำลังทดสอบเสียงอยู่ รอเสร็จแล้วตรวจสถานะอีกครั้ง', 'retry')
+                else:
+                    item = diagnostics.row('monitor', 'การอ่านรายการจองจริง', 'amber',
+                        'ตัวตรวจตารางหยุดอยู่ การตรวจระบบนี้จะไม่เริ่มประกาศให้อัตโนมัติ', 'start')
+            publish(item)
+            if config['kind'] != 'red' and not cancel.is_set():
+                for result in diagnostics.probe_calendar(snapshot['url'], cancel):
+                    publish(result)
+            for name, device in snapshot['rooms'].items():
+                if cancel.is_set():
+                    break
+                publish(diagnostics.probe_speaker(name, device, snapshot['password'], cancel,
+                                                  username=snapshot.get('username', 'admin')))
+        except Exception:
+            # ไม่ส่ง exception ดิบที่อาจมี URL/รหัสผ่านกลับไปยัง JavaScript.
+            publish(diagnostics.row('unexpected', 'ผลตรวจระบบ', 'red', 'ตรวจระบบไม่ครบ ลองตรวจใหม่หรือเปิดบันทึกให้ผู้ดูแลตรวจสอบ', 'logs'))
+        finally:
+            with self.lock:
+                if not cancel.is_set() and not self.shutting_down:
+                    self.diagnostic_state['running'] = False
+                    self.diagnostic_state['checked_at'] = datetime.now().strftime('%H:%M:%S')
+                    self.diagnostic_state['stale'] = snapshot['revision'] != self._diagnostic_revision
 
     def open_logs(self) -> dict[str, Any]:
         try:
@@ -953,6 +1075,8 @@ class BroadcastController:
             if self.shutting_down:
                 return {"ok": True, "closing": True}
             self.shutting_down = True
+            self._diagnostic_cancel.set()
+            self.diagnostic_state['running'] = False
             self.pending_close = False
             self.pending_test_room = None
             self.resume_after_test = self.pending_restart = False
@@ -1002,6 +1126,8 @@ class BroadcastController:
                 return True
             with self.lock:
                 self.shutting_down = True
+                self._diagnostic_cancel.set()
+                self.diagnostic_state['running'] = False
                 self.pending_test_room = None
                 self.resume_after_test = self.pending_restart = False
                 self.intentional_stop = True
@@ -1070,6 +1196,12 @@ class DesktopAPI:
 
     def cancel_exit(self) -> dict[str, bool]:
         return self._controller.cancel_exit()
+
+    def start_diagnostics(self) -> dict[str, Any]:
+        return self._call('start_diagnostics')
+
+    def restart_monitor(self) -> dict[str, Any]:
+        return self._call('restart_monitor')
 
 
 def run() -> None:

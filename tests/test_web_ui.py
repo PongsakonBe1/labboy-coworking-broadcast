@@ -37,6 +37,13 @@ def sample_state():
             "now": "2026-10-27 18:59:00"}
 
 
+def diagnostic_report():
+    return {'running':False,'stale':False,'checked_at':'18:59:45','rows':[
+        {'key':'web','title':'การเชื่อมต่อ K‑Room','kind':'amber','detail':'เว็บไซต์ตอบช้า ระบบเดิมกำลังลองใหม่','action':'retry'},
+        {'key':'monitor','title':'การอ่านรายการจองจริง','kind':'amber','detail':'ยังยืนยันผลอ่านล่าสุดไม่ได้','action':'restart'},
+        {'key':'speaker:Linux','title':'ลำโพงห้อง Linux','kind':'red','detail':'อุปกรณ์ปฏิเสธรหัสผ่าน','action':'password'}]}
+
+
 class WebUITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -92,6 +99,62 @@ class WebUITests(unittest.TestCase):
         self.page.locator('#settingsScheduleUrl').fill('https://example.org/new-calendar')
         self.page.locator('#todayDateLabel').evaluate('() => update(current)')
         self.assertEqual(self.page.locator('#settingsScheduleUrl').input_value(), 'https://example.org/new-calendar')
+        self.assertFalse(self.errors)
+
+    def open_diagnostic_report(self):
+        self.page.evaluate('(report)=>{current.diagnostics=report;update(current);}', diagnostic_report())
+        self.page.locator('#helpToggleBtn').click()
+
+    def test_diagnostics_is_read_only_and_reuses_rows(self):
+        self.page.locator('#helpToggleBtn').click()
+        self.page.wait_for_function("apiCalls.some(item=>item[0]==='start_diagnostics')")
+        calls=self.page.evaluate('apiCalls.map(item=>item[0])')
+        self.assertNotIn('test_speaker',calls)
+        self.assertNotIn('restart_monitor',calls)
+        self.page.evaluate('(report)=>{current.diagnostics=report;update(current);}', diagnostic_report())
+        first=self.page.locator('.diagnostic-row').first.element_handle()
+        self.page.evaluate('update(current)')
+        self.assertTrue(first.evaluate('(node)=>node===document.querySelector(".diagnostic-row")'))
+        self.assertIn('พบปัญหา',self.page.locator('#diagnosticSummary').inner_text())
+
+    def test_diagnostic_repair_requires_confirmation_and_can_open_password(self):
+        self.open_diagnostic_report()
+        self.page.locator('[data-repair="restart"]').click()
+        self.assertIn('เหลือ',self.page.locator('#confirmMessage').inner_text())
+        self.page.locator('#confirmDialog button[value="cancel"]').click()
+        self.assertNotIn('restart_monitor',self.page.evaluate('apiCalls.map(item=>item[0])'))
+        self.page.locator('[data-repair="restart"]').click()
+        self.page.locator('#confirmButton').click()
+        self.page.wait_for_function("apiCalls.some(item=>item[0]==='restart_monitor')")
+        self.page.locator('[data-repair="password"]').click()
+        self.assertTrue(self.page.locator('#passwordDialog').is_visible())
+        self.page.keyboard.press('Escape')
+        self.assertNotIn('save_password',self.page.evaluate('apiCalls.map(item=>item[0])'))
+
+    def test_stale_diagnostic_results_cannot_apply_old_actions(self):
+        self.open_diagnostic_report()
+        self.page.evaluate('()=>{current.diagnostics.stale=true;update(current);}')
+        self.assertTrue(self.page.locator('[data-repair="restart"]').is_disabled())
+        self.assertTrue(self.page.locator('#runDiagnosticsBtn').is_enabled())
+
+    def test_help_layout_and_contrast_in_all_themes(self):
+        self.open_diagnostic_report()
+        for theme in ('light','dark','high_contrast'):
+            self.page.evaluate('(theme)=>{current.settings.appearance=theme;update(current);}',theme)
+            self.check_visible_text_contrast('help/'+theme)
+            self.page.evaluate('()=>{current.diagnostics.running=true;update(current);}')
+            self.check_visible_text_contrast('help-running/'+theme)
+            self.assertEqual(self.page.locator('#runDiagnosticsBtn').evaluate('(node)=>getComputedStyle(node).opacity'),'1')
+            self.page.evaluate('()=>{current.diagnostics.running=false;update(current);}')
+            for width,height in ((1280,940),(1326,678),(900,540)):
+                self.page.set_viewport_size({'width':width,'height':height})
+                self.assertLessEqual(self.page.evaluate('document.documentElement.scrollWidth'),width)
+                self.page.locator('#helpLogsBtn').scroll_into_view_if_needed()
+                rect=self.page.locator('#helpLogsBtn').bounding_box()
+                self.assertLessEqual(rect['y']+rect['height'],height)
+            self.page.set_viewport_size({'width':1280,'height':940})
+            self.page.locator('#helpTitle').scroll_into_view_if_needed()
+            self.page.screenshot(path=str(OUTPUT/f'help-{theme}.png'))
         self.assertFalse(self.errors)
 
     def test_close_confirmation_is_not_duplicated_and_cancel_is_reported(self):

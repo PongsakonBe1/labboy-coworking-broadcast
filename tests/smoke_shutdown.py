@@ -59,6 +59,7 @@ def worker(scenario, folder):
             patch.object(ui.BroadcastController, '_load_previous_logs'), \
             patch.object(ui.BroadcastController, '_load_sound_state'), \
             patch.object(ui.BroadcastController, '_write_startup_registration'), \
+            patch.object(ui.BroadcastController, 'start_diagnostics', return_value={'ok': True}), \
             patch.object(ui.BroadcastController, 'save_settings', side_effect=AssertionError('settings writes forbidden')), \
             patch.object(ui.BroadcastController, '_launch_test_process', side_effect=AssertionError('audio forbidden')), \
             patch.object(ui, 'save_speaker_password', side_effect=AssertionError('credential writes forbidden')), \

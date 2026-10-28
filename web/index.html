@@ -51,6 +51,7 @@
         </div>
       </div>
       <div class="sidebar-bottom">
+        <button class="nav-toggle-btn" id="helpToggleBtn">ตรวจระบบ</button>
         <label class="sidebar-option"><input id="sidebarStartup" type="checkbox">เริ่มพร้อม Windows</label>
         <label class="sidebar-option"><input id="sidebarTray" type="checkbox">ย่อ/ปิดหน้าต่างไว้ที่ถาดระบบ</label>
         <p class="sidebar-security">● รหัสผ่านเก็บใน Windows Credential Manager · v2.0</p>
@@ -163,6 +164,29 @@
               <div class="empty-state">ยังไม่มีกิจกรรม</div>
             </div>
           </article>
+        </div>
+      </div>
+
+      <div class="view-panel hidden" id="helpView">
+        <div class="help-page">
+          <div class="help-heading">
+            <div><h2 tabindex="-1" id="helpTitle">ตรวจและแก้ไขปัญหา</h2>
+              <p>ตรวจระบบโดยไม่ส่งเสียง และไม่หยุดการประกาศที่กำลังทำงาน</p></div>
+            <button class="button primary" id="runDiagnosticsBtn">เริ่มตรวจระบบ</button>
+          </div>
+          <section class="help-summary" role="status" aria-live="polite" aria-atomic="true">
+            <strong id="diagnosticSummary">พร้อมตรวจระบบ</strong>
+            <p id="diagnosticProgress">ผลตรวจจะแสดงทีละข้อ พร้อมขั้นตอนที่ทำต่อได้</p>
+          </section>
+          <p class="help-caption">การเชื่อมต่อลำโพงเป็นการอ่านข้อมูลอุปกรณ์เท่านั้น ไม่ยืนยันว่าได้ยินเสียงหรือมีไฟล์เสียงครบ</p>
+          <div id="diagnosticRows" aria-label="ผลตรวจระบบ"></div>
+          <section class="card help-guidance">
+            <h3>แก้ไขทีละขั้น</h3>
+            <p>เว็บตอบช้าชั่วคราว: รอรอบตรวจถัดไป แล้วกดตรวจอีกครั้ง หากยังไม่กลับมาจึงเริ่มตัวตรวจใหม่</p>
+            <p>ลำโพงไม่ตอบ: ตรวจไฟเลี้ยง สายเครือข่าย และข้อมูลห้องในหน้าตั้งค่า</p>
+            <p>เว็บเปลี่ยนรูปแบบ: ตรวจ URL ก่อน แล้วให้ผู้พัฒนาปรับตัวอ่านเมื่อยังไม่พบปฏิทิน</p>
+            <button class="text-button" id="helpLogsBtn">เปิดบันทึกให้ผู้ดูแล</button>
+          </section>
         </div>
       </div>
 

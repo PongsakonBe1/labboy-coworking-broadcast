@@ -248,3 +248,34 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   *, *::before, *::after { animation:none !important; transition:none !important; scroll-behavior:auto !important; }
   button:active { transform:none; }
 }
+
+/* ศูนย์ตรวจระบบใช้ tokens เดียวกับ dashboard และเลื่อนภายในพื้นที่หลัก. */
+.help-page { flex:1; min-height:0; overflow:auto; padding:24px; background:var(--bg-window); }
+.help-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px; }
+.help-heading h2 { margin:0; font-size:24px; }
+.help-heading p, .help-summary p, .help-caption, .diagnostic-detail, .help-guidance p { font-size:15px; line-height:1.5; color:var(--text-sub); }
+.help-summary { padding:16px; border:1px solid var(--border-subtle); border-radius:12px; background:var(--bg-surface); }
+.help-summary strong { font-size:17px; }
+.help-summary p { margin:4px 0 0; }
+.help-caption { margin:12px 0; }
+.diagnostic-row { display:grid; grid-template-columns:24px minmax(0,1fr) auto; align-items:start; gap:12px; padding:16px; margin-bottom:10px; border:1px solid var(--border-subtle); border-radius:12px; background:var(--bg-surface); }
+.diagnostic-row h3 { margin:0 0 4px; font-size:17px; }
+.diagnostic-detail { margin:0; overflow-wrap:anywhere; }
+.diagnostic-state { font-size:14px; font-weight:normal; color:var(--text-sub); }
+.diagnostic-mark { font-size:18px; font-weight:bold; color:var(--text-sub); }
+.diagnostic-mark.green { color:var(--color-green); }
+.diagnostic-mark.red { color:var(--color-red); }
+.diagnostic-mark.amber { color:var(--color-amber); }
+.diagnostic-mark.blue { color:var(--color-blue); }
+.diagnostic-row .button { min-height:36px; height:auto; padding:8px 12px; }
+.help-page .button:disabled { opacity:1; color:var(--text-sub); background:var(--bg-inner); border:1px solid var(--control-border); cursor:wait; }
+.help-page .button.quiet:hover:not(:disabled) { border-color:var(--control-border); background:var(--bg-inner); color:var(--text-main); }
+.help-page .button.primary:hover:not(:disabled) { background:var(--action-blue); color:var(--on-action); }
+.help-guidance { padding:16px; margin-top:16px; border-color:var(--border-subtle); }
+.help-guidance h3 { font-size:18px; margin:0 0 8px; }
+#helpToggleBtn { margin-bottom:8px; }
+@media(max-width:1000px) {
+  .help-page { padding:16px; }
+  .diagnostic-row { grid-template-columns:20px minmax(0,1fr); }
+  .diagnostic-row .button { grid-column:2; justify-self:start; }
+}
