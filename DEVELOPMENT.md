@@ -38,6 +38,10 @@ Playwright ใช้ Microsoft Edge ที่ติดตั้งใน Windows
 
 `สร้างโปรแกรม EXE.bat` ใช้ PyInstaller สร้าง GUI และ monitor แยกเป็นสอง executable ลง `build/release` เพื่อให้ยังคงการทำงาน child-process และ log protocol เดิม ต้องเก็บไฟล์ทั้งคู่ไว้ข้างกันในโฟลเดอร์ที่เขียน log/state ได้ ตัว launcher เลือก GUI EXE เมื่อไฟล์ครบ; ถ้าไม่มีจะใช้ Python script ตามเดิม
 
+การ build monitor ต้องใส่ `--runtime-hook pyinstaller_hooks/monitor_utf8_stdio.py` เพราะ [frozen interpreter ของ PyInstaller ไม่ประมวลผล environment variables ของ Python](https://pyinstaller.org/en/stable/advanced-topics.html#environment-variables-used-by-frozen-applications) การส่ง `PYTHONIOENCODING=utf-8` จาก GUI อย่างเดียวจึงไม่พอ บน Windows ภาษาไทยอาจส่ง pipe เป็น cp874 แต่ GUI ถอด UTF‑8 ทำให้ parser อ่าน summary/booking ไม่ได้ ทั้งที่ไฟล์ log UTF‑8 และตัว monitor ยังทำงานอยู่ Hook ตั้ง stdin/stdout/stderr ก่อนสร้าง logging handlers โดยไม่แก้ source monitor, ข้อความ log หรือ regex
+
+หลัง build รัน `python tests/smoke_monitor_exe.py` เสมอ: คัดลอก EXE ไปโฟลเดอร์ชั่วคราว ตั้ง URL ให้ validation ปฏิเสธก่อนเริ่ม browser/lock แล้วตรวจ bytes ใน pipe ด้วย UTF‑8 strict ไม่อ่านรหัสหรือส่งคำสั่งอุปกรณ์ CI สร้างและทดสอบ monitor EXE จริงด้วย เพื่อจับปัญหาที่ไม่พบเมื่อรัน source Python
+
 ใช้ `อัปเดตโปรแกรม.bat` ซึ่งเรียก `update_app.ps1` (UTF-8 BOM สำหรับ Windows PowerShell) เพื่อติดตั้งไฟล์จาก `build/release` ข้าง launcher หลังผู้ใช้ยืนยันจึงหยุด process ที่ตรวจ executable/script path ว่าเป็น installation นี้เท่านั้น สำรองไฟล์ใน `build/update-backups`, ตรวจ SHA256 หลังคัดลอก และคืนไฟล์เดิมเมื่อคัดลอกล้มเหลว จากนั้นเปิดแอปใหม่โดยคงโฟลเดอร์ runtime เดิม
 
 `update_app.ps1 -CheckOnly` ตรวจ process/release แบบอ่านอย่างเดียว; `tests/test_updater.py` ใช้ไฟล์ executable จำลองและไม่หยุด process จริง

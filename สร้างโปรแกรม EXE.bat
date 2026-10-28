@@ -12,7 +12,11 @@ if errorlevel 1 goto build_failed
 
 echo.
 echo Building the room monitor executable...
-py -3 -m PyInstaller --noconfirm --clean --onefile --name room_speaker_monitor --distpath "%~dp0build\release" --workpath "%~dp0build\monitor" --specpath "%~dp0build" --add-data "%~dp0room_devices.example.json;." "%~dp0room_speaker_monitor.py"
+py -3 -m PyInstaller --noconfirm --clean --onefile --name room_speaker_monitor --runtime-hook "%~dp0pyinstaller_hooks\monitor_utf8_stdio.py" --distpath "%~dp0build\release" --workpath "%~dp0build\monitor" --specpath "%~dp0build" --add-data "%~dp0room_devices.example.json;." "%~dp0room_speaker_monitor.py"
+if errorlevel 1 goto build_failed
+
+echo Checking Thai UTF-8 output from the packaged monitor without audio...
+py -3 "%~dp0tests\smoke_monitor_exe.py"
 if errorlevel 1 goto build_failed
 
 echo.

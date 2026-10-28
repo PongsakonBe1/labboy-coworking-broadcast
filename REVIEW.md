@@ -1,4 +1,4 @@
-# ผลตรวจ UI และการทำงาน — 27 ตุลาคม 2569
+# ผลตรวจ UI และการทำงาน — 28 ตุลาคม 2569
 
 ตรวจ source และทดสอบด้วยข้อมูลจำลองก่อนเผยแพร่ โดยไม่ส่งคำสั่งไปยังลำโพงจริง
 
@@ -24,6 +24,7 @@
 | สถานะเปลี่ยนแล้วสร้างเนื้อหาปุ่มใหม่ ทำให้โฟกัสหาย | อัปเดตเฉพาะข้อความสถานะใน DOM เดิมและคงตัวเลือก filter เดิม | `renderRooms`, `setText` |
 | ข้อความรอง 10–13px / ปุ่มบางจุดสูง 30px | ข้อความรองอย่างน้อย 14px คอนโทรลอย่างน้อย 36px ย้ายสถิติรอบนี้ไปตั้งค่า | `web/dashboard.css`, `updateMetrics`, `web/index.html` |
 | ขาด keyboard shortcut และชื่อ dialog สำหรับ accessibility | เพิ่ม focus ring, ชื่อ dialog, aria-live ที่อัปเดตเมื่อค่าเปลี่ยน, shortcut พร้อม confirmation และ reduced motion | `web/app.js`, `web/index.html`, `web/dashboard.css` |
+| monitor EXE ส่ง pipe ภาษาไทยเป็น cp874 แต่ GUI อ่าน UTF‑8 จึงไม่มีรายการและ error ค้าง แม้ไฟล์ log อ่านตารางสำเร็จ | บังคับ UTF‑8 ใน runtime hook ก่อนสร้าง logging handlers พร้อมทดสอบ EXE จริงใน build/CI | `pyinstaller_hooks/monitor_utf8_stdio.py`, `สร้างโปรแกรม EXE.bat`, `tests/smoke_monitor_exe.py` |
 
 ## ดีไซน์
 
@@ -35,7 +36,7 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 
 ## ผลทดสอบ
 
-- Python unittest 37 กรณี: ผ่าน (รวม updater 5 กรณี)
+- Python unittest 40 กรณี: ผ่าน (รวม updater 5 กรณี)
 - JavaScript status/filter/priority/outcome suite: ผ่าน
 - `check_contrast.py`: ผ่านคู่สี legacy และ Web UI ครบ light/dark/high_contrast
 - ตรวจสีข้อความที่ render จริงใน dashboard, ตั้งค่า, dialog รายละเอียดห้องและรหัสผ่านทั้ง 3 ธีม: ผ่าน
@@ -46,6 +47,7 @@ Figma connector คืน resource links ของ Make แต่ resource reade
 - reduced motion ตาม system preference และขนาดข้อความรอง/คอนโทรลที่มองเห็น: ผ่าน
 - ตรวจ Run registry แบบอ่านอย่างเดียว: ชี้มายัง EXE ของ installation ปัจจุบันและไฟล์มีอยู่จริง; ยังไม่ได้ทดสอบ sign-in Windows รอบใหม่
 - WebView2 จริงและ JavaScript/Python bridge: ผ่าน โดย mock รหัส, startup และ monitor
+- monitor EXE จริงส่งข้อความไทยผ่าน pipe แบบ UTF‑8 strict: ผ่าน โดยใช้ URL invalid ในโฟลเดอร์ชั่วคราว ไม่เปิดเว็บหรือส่งเสียง; unit test จำลอง cp874/cp1252 พร้อมช่วงเวลา en dash และทดสอบว่า parser เดิมรับรายการจอง/ล้าง read_error ได้
 - สร้าง EXE ของ GUI และ monitor ด้วย PyInstaller: ผ่านทั้งสองไฟล์ใน `build/release`; ไม่เขียนทับ executable เดิมที่กำลังรัน และยังไม่ได้สั่งใช้งาน EXE ชุดใหม่กับลำโพงจริง
 - ตัวอัปเดตถามยืนยันก่อนหยุด process ของ installation นี้ รองรับ monitor ที่ค้างโดยไม่มี GUI, สำรอง EXE, ตรวจ hash, คืนไฟล์เดิมเมื่อคัดลอกล้มเหลว และไม่เปลี่ยน state; ทดสอบด้วยไฟล์/process จำลอง ไม่หยุด process จริงระหว่างทดสอบ
 - monitor contract: รายการที่เคยใช้งานแล้วครบเวลาประกาศได้, รายการไม่เข้าใช้/ถูกระงับ/ไม่รู้จักสถานะ/เลยช่วงเผื่อ/อนาคต/โหมดทดลองไม่ประกาศ, รายการส่งแล้วไม่ส่งซ้ำ
@@ -59,6 +61,8 @@ py -3 -m unittest discover -s tests -p "test_*.py" -v
 node tests/test_booking_model.js
 py -3 check_contrast.py
 py -3 tests/smoke_webview.py
+# หลัง build EXE
+py -3 tests/smoke_monitor_exe.py
 ```
 
 ภาพจากการทดสอบอยู่ใน `build/ui-review/` (ไม่ commit); ภาพตัวอย่างสาธารณะใน `docs/ui-preview.png` ใช้ข้อมูลจำลองและ IP เอกสาร `192.0.2.x`

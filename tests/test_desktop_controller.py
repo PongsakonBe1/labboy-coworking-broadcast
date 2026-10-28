@@ -1,6 +1,10 @@
 """ทดสอบด้วย process/credential จำลอง ไม่มีการเชื่อมต่อ K-Room หรือลำโพง."""
 import io
 import json
+from pathlib import Path
+import logging
+import runpy
+import sys
 import unittest
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
@@ -48,6 +52,32 @@ class ControllerTests(unittest.TestCase):
         self.c._handle_log(f"{self.today} 16:00:02 INFO สั่งเล่นเสียงห้อง Linux (192.0.2.1) สำเร็จ: HTTP 200")
         self.assertNotEqual(self.c.records[key]["alert"], "ส่งเสียงแล้ว")
         self.assertEqual(self.c.successes, 0)
+
+    def test_utf8_monitor_pipe_restores_bookings_and_clears_read_error(self):
+        # จำลอง Windows cp874 แล้วผ่าน runtime hook + pipe + parser เดิมครบทาง.
+        pipe = io.BytesIO()
+        stream = io.TextIOWrapper(pipe, encoding='cp874')
+        try:
+            with patch.multiple(sys, stdin=None, stdout=io.StringIO(), stderr=stream):
+                runpy.run_path(str(Path(ui.__file__).parent / 'pyinstaller_hooks' / 'monitor_utf8_stdio.py'))
+                handler = logging.StreamHandler(stream)
+                handler.setFormatter(logging.Formatter('%(message)s'))
+                for line in (
+                    f'{self.today} 15:59:56 ERROR หมดเวลารอหน้าเว็บหรือข้อมูลปฏิทิน',
+                    f'{self.today} 15:59:58 INFO สรุปรายการที่อ่านได้: Linux=1',
+                    f'{self.today} 15:59:59 INFO พบรายการ: ห้อง Linux | '
+                    f'{self.today} 13:00–{self.today} 16:00 | สถานะ=กำลังใช้ห้อง สี=#00a65a',
+                ):
+                    handler.handle(logging.LogRecord('test', logging.INFO, '', 0, line, (), None))
+            decoded = pipe.getvalue().decode('utf-8', errors='strict')
+            for line in decoded.splitlines():
+                self.c._handle_log(line)
+            self.assertEqual(len(self.c.records), 1)
+            self.assertEqual(self.c.read_count, 1)
+            self.assertEqual(next(iter(self.c.records.values()))['status'], 'กำลังใช้ห้อง')
+            self.assertEqual(self.c.read_error, '')
+        finally:
+            stream.close()
 
     def test_successful_test_updates_sidebar_without_a_parseable_log(self):
         process = Mock(stdout=io.StringIO(''), wait=Mock(return_value=0))

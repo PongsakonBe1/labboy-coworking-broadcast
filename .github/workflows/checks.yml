@@ -14,13 +14,17 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
-      - run: python -m pip install -r requirements.txt
+      - run: python -m pip install -r requirements-build.txt
       - name: Controller, monitor contract, and isolated browser UI
         run: python -m unittest discover -s tests -p "test_*.py" -v
       - name: Frontend status and sorting
         run: node tests/test_booking_model.js
       - name: WCAG tokens in every theme
         run: python check_contrast.py
+      - name: Build monitor with explicit UTF-8 runtime hook
+        run: python -m PyInstaller --noconfirm --clean --onefile --name room_speaker_monitor --runtime-hook pyinstaller_hooks/monitor_utf8_stdio.py --distpath build/release --workpath build/monitor --specpath build --add-data "room_devices.example.json;." room_speaker_monitor.py
+      - name: Packaged monitor pipe encoding (no audio or web)
+        run: python tests/smoke_monitor_exe.py
       - uses: actions/upload-artifact@v4
         if: always()
         with:
